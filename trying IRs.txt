@@ -1,0 +1,24 @@
+#define IR_SENSOR_PIN 4
+#define IR_SENSOR_PIN2 16
+
+void setup() {
+  // Initialize serial communication for debugging
+  Serial.begin(115200);
+  
+  // Initialize IR sensor pins as input
+  pinMode(IR_SENSOR_PIN, INPUT);
+  pinMode(IR_SENSOR_PIN2, INPUT);
+}
+
+void loop() {
+  int sensorValue1 = digitalRead(IR_SENSOR_PIN);
+  int sensorValue2 = digitalRead(IR_SENSOR_PIN2);
+  
+  Serial.print("IR Sensor 1: ");
+  Serial.println(sensorValue1);
+  
+  Serial.print("IR Sensor 2: ");
+  Serial.println(sensorValue2);
+  
+  delay(1000); // Wait for 1 second
+}
