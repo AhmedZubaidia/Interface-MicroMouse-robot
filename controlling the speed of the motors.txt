@@ -1,0 +1,122 @@
+#include <Arduino.h>
+#include <WiFi.h>
+#include <ESPAsyncWebServer.h>
+
+// WiFi credentials (replace with your desired SSID and password)
+const char* ssid = "ESP32-AP";
+const char* password = "123456789";
+
+// Define motor control pins
+#define MOTOR1_IN1 22
+#define MOTOR1_IN2 23
+#define MOTOR2_IN3 25
+#define MOTOR2_IN4 26
+
+// Define PWM pins for motor speed control
+#define MOTOR1_PWM 5
+#define MOTOR2_PWM 32
+
+// Motor speed variables
+int motor1Speed = 0;
+int motor2Speed = 0;
+
+// Create AsyncWebServer object on port 80
+AsyncWebServer server(80);
+
+const char index_html[] PROGMEM = R"rawliteral(
+<!DOCTYPE HTML><html>
+<head>
+  <title>ESP32 Motor Speed Control</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+  <h1>ESP32 Motor Speed Control</h1>
+  <p>Motor 1 Speed: <span id="motor1Speed">%MOTOR1SPEED%</span></p>
+  <p><input type="range" id="motor1Slider" min="0" max="255" value="%MOTOR1SPEED%" oninput="updateMotor1Speed(this.value)"></p>
+  <p>Motor 2 Speed: <span id="motor2Speed">%MOTOR2SPEED%</span></p>
+  <p><input type="range" id="motor2Slider" min="0" max="255" value="%MOTOR2SPEED%" oninput="updateMotor2Speed(this.value)"></p>
+  
+  <script>
+    function updateMotor1Speed(value) {
+      document.getElementById('motor1Speed').innerText = value;
+      var xhr = new XMLHttpRequest();
+      xhr.open("GET", "/setMotor1Speed?value=" + value, true);
+      xhr.send();
+    }
+    
+    function updateMotor2Speed(value) {
+      document.getElementById('motor2Speed').innerText = value;
+      var xhr = new XMLHttpRequest();
+      xhr.open("GET", "/setMotor2Speed?value=" + value, true);
+      xhr.send();
+    }
+  </script>
+</body>
+</html>
+)rawliteral";
+
+void setup() {
+  // Initialize Serial communication
+  Serial.begin(115200);
+
+  // Configure ESP32 as an access point
+  WiFi.softAP(ssid, password);
+
+  // Print the IP address
+  Serial.println();
+  Serial.print("Access Point \"");
+  Serial.print(ssid);
+  Serial.println("\" started");
+  Serial.print("IP address:\t");
+  Serial.println(WiFi.softAPIP());
+
+  // Set motor control pins as outputs
+  pinMode(MOTOR1_IN1, OUTPUT);
+  pinMode(MOTOR1_IN2, OUTPUT);
+  pinMode(MOTOR2_IN3, OUTPUT);
+  pinMode(MOTOR2_IN4, OUTPUT);
+
+  // Set PWM pins as outputs
+  pinMode(MOTOR1_PWM, OUTPUT);
+  pinMode(MOTOR2_PWM, OUTPUT);
+
+  // Set motor directions
+  digitalWrite(MOTOR1_IN1, HIGH);
+  digitalWrite(MOTOR1_IN2, LOW);
+  digitalWrite(MOTOR2_IN3, HIGH);
+  digitalWrite(MOTOR2_IN4, LOW);
+
+  // Serve the HTML page
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    String html = index_html;
+    html.replace("%MOTOR1SPEED%", String(motor1Speed));
+    html.replace("%MOTOR2SPEED%", String(motor2Speed));
+    request->send(200, "text/html", html);
+  });
+
+  // Update motor 1 speed
+  server.on("/setMotor1Speed", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (request->hasParam("value")) {
+      motor1Speed = request->getParam("value")->value().toInt();
+      analogWrite(MOTOR1_PWM, motor1Speed);
+    }
+    request->send(200, "text/plain", "OK");
+  });
+
+  // Update motor 2 speed
+  server.on("/setMotor2Speed", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (request->hasParam("value")) {
+      motor2Speed = request->getParam("value")->value().toInt();
+      analogWrite(MOTOR2_PWM, motor2Speed);
+    }
+    request->send(200, "text/plain", "OK");
+  });
+
+  // Start server
+  server.begin();
+  Serial.println("Server started");
+}
+
+void loop() {
+  // Empty loop as control is done via the web interface
+}
