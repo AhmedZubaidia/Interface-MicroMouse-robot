@@ -1,0 +1,309 @@
+#include <Arduino.h>
+#include <Wire.h>
+
+// Define motor control pins
+#define MOTOR1_IN1 22
+#define MOTOR1_IN2 23
+#define MOTOR2_IN3 25
+#define MOTOR2_IN4 26
+
+// Define encoder pins
+#define ENCODER1_C1 34
+#define ENCODER1_C2 35
+#define ENCODER2_C1 21
+#define ENCODER2_C2 19
+
+// Define PWM pins for motor speed control
+#define MOTOR1_PWM 5
+#define MOTOR2_PWM 32
+
+// Define IR sensor pin
+#define IR_SENSOR_PIN 15  // Using D15 for the IR sensor
+
+// Define MPU6050 I2C address
+const int MPU = 0x68;
+
+volatile int encoder1Pos = 0;
+volatile int encoder2Pos = 0;
+
+// Control parameters
+int baseSpeed = 90;  // Base speed for motors
+int minSpeed = 80;   // Minimum speed to ensure the motors start and move
+float kp = 0.5;      // Proportional gain
+float ki = 0.1;      // Integral gain
+int maxSpeed = 110;  // Maximum speed limit for motors
+
+// Speed ratio for motor 1
+float speedRatio = 1.6; // Adjust this ratio to make motor 1 faster
+
+// Integral error accumulation
+float integralError1 = 0;
+float integralError2 = 0;
+
+// IR sensor state
+bool obstacleDetected = false;
+
+// MPU6050 variables
+float AccX, AccY, AccZ;
+float GyroX, GyroY, GyroZ;
+float roll, pitch, yaw;
+float elapsedTime, currentTime, previousTime;
+float AccErrorX, AccErrorY, GyroErrorX, GyroErrorY, GyroErrorZ;
+float angle; // angle for controlling direction
+
+void setup() {
+  // Initialize Serial communication
+  Serial.begin(115200);
+
+  // Set motor control pins as outputs
+  pinMode(MOTOR1_IN1, OUTPUT);
+  pinMode(MOTOR1_IN2, OUTPUT);
+  pinMode(MOTOR2_IN3, OUTPUT);
+  pinMode(MOTOR2_IN4, OUTPUT);
+
+  // Set PWM pins as outputs
+  pinMode(MOTOR1_PWM, OUTPUT);
+  pinMode(MOTOR2_PWM, OUTPUT);
+
+  // Set encoder pins as inputs
+  pinMode(ENCODER1_C1, INPUT);
+  pinMode(ENCODER1_C2, INPUT);
+  pinMode(ENCODER2_C1, INPUT);
+  pinMode(ENCODER2_C2, INPUT);
+
+  // Set IR sensor pin as input
+  pinMode(IR_SENSOR_PIN, INPUT);
+
+  // Attach interrupts for encoder pins
+  attachInterrupt(digitalPinToInterrupt(ENCODER1_C1), updateEncoder1, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ENCODER1_C2), updateEncoder1, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ENCODER2_C1), updateEncoder2, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ENCODER2_C2), updateEncoder2, CHANGE);
+
+  // MPU6050 setup
+  Wire.begin();
+  Wire.beginTransmission(MPU);
+  Wire.write(0x6B);  // PWR_MGMT_1 register
+  Wire.write(0);     // set to zero (wakes up the MPU-6050)
+  Wire.endTransmission(true);
+
+  // Call this function to calculate error values for your module
+  calculateError();
+
+  Serial.println("Setup complete");
+}
+
+void loop() {
+  int targetPosition = 1000000;  // Example target position
+
+  while (true) {
+    // Check for obstacle
+    if (digitalRead(IR_SENSOR_PIN) == LOW) {  // Assuming LOW indicates obstacle detected
+      if (!obstacleDetected) {
+        Serial.println("Obstacle detected, moving backward");
+        moveBackward(5);  // Move backward for 5 seconds
+        obstacleDetected = true;  // Set the obstacle detected flag
+      }
+      continue;  // Skip the rest of the loop while handling obstacle
+    } else {
+      obstacleDetected = false;  // Reset the obstacle detected flag if no obstacle
+    }
+
+    // Read MPU6050 data
+    readMPU6050();
+
+    // Calculate the errors between the target position and current encoder positions
+    int error1 = targetPosition - encoder1Pos;
+    int error2 = targetPosition - encoder2Pos;
+
+    // Calculate the speed adjustments using PI control
+    int motor1Speed = baseSpeed + kp * error1 + ki * integralError1;
+    int motor2Speed = baseSpeed + kp * error2 + ki * integralError2;
+
+    // Adjust motor speeds based on MPU6050 angle to keep the robot moving straight
+    float angleCorrection = kp * angle;
+    motor1Speed -= angleCorrection;
+    motor2Speed += angleCorrection;
+
+    // Apply speed ratio to motor 1
+    motor1Speed *= speedRatio;
+
+    // Ensure speed values are within valid PWM range
+    motor1Speed = constrain(motor1Speed, minSpeed, maxSpeed);
+    motor2Speed = constrain(motor2Speed, minSpeed, maxSpeed);
+
+    // Set motor directions
+    digitalWrite(MOTOR1_IN1, HIGH);
+    digitalWrite(MOTOR1_IN2, LOW);
+    digitalWrite(MOTOR2_IN3, HIGH);
+    digitalWrite(MOTOR2_IN4, LOW);
+
+    // Set motor speeds
+    analogWrite(MOTOR1_PWM, motor1Speed);
+    analogWrite(MOTOR2_PWM, motor2Speed);
+
+    // Output the current state to Serial
+    Serial.print("Encoder1: ");
+    Serial.print(encoder1Pos);
+    Serial.print(", Encoder2: ");
+    Serial.print(encoder2Pos);
+    Serial.print(", Motor1 Speed: ");
+    Serial.print(motor1Speed);
+    Serial.print(", Motor2 Speed: ");
+    Serial.println(motor2Speed);
+
+    // Check if both motors have reached the target position
+    if (encoder1Pos >= targetPosition && encoder2Pos >= targetPosition) {
+      analogWrite(MOTOR1_PWM, 0);
+      analogWrite(MOTOR2_PWM, 0);
+      Serial.println("Target position reached");
+      break;
+    }
+
+    delay(10);  // Small delay for more responsive control
+  }
+}
+
+void updateEncoder1() {
+  static int lastEncoded1 = 0;
+  int MSB = digitalRead(ENCODER1_C1);  // MSB = most significant bit
+  int LSB = digitalRead(ENCODER1_C2);  // LSB = least significant bit
+
+  int encoded = (MSB << 1) | LSB;  // converting the 2 pin value to single number
+  int sum = (lastEncoded1 << 2) | encoded;  // adding it to the previous encoded value
+
+  if (sum == 0b1101 || sum == 0b0100 || sum == 0b0010 || sum == 0b1011) encoder1Pos++;
+  if (sum == 0b1110 || sum == 0b0111 || sum == 0b0001 || sum == 0b1000) encoder1Pos--;
+
+  lastEncoded1 = encoded;  // store this value for next time
+}
+
+void updateEncoder2() {
+  static int lastEncoded2 = 0;
+  int MSB = digitalRead(ENCODER2_C1);  // MSB = most significant bit
+  int LSB = digitalRead(ENCODER2_C2);  // LSB = least significant bit
+
+  int encoded = (MSB << 1) | LSB;  // converting the 2 pin value to single number
+  int sum = (lastEncoded2 << 2) | encoded;  // adding it to the previous encoded value
+
+  if (sum == 0b1101 || sum == 0b0100 || sum == 0b0010 || sum == 0b1011) encoder2Pos--;
+  if (sum == 0b1110 || sum == 0b0111 || sum == 0b0001 || sum == 0b1000)  encoder2Pos++;
+
+  lastEncoded2 = encoded;  // store this value for next time
+}
+
+void resetMotors() {
+  // Stop motors
+  analogWrite(MOTOR1_PWM, 0);
+  analogWrite(MOTOR2_PWM, 0);
+
+  // Small delay to ensure motors are stopped
+  delay(500);
+
+  // Reset integral errors and encoder positions
+  integralError1 = 0;
+  integralError2 = 0;
+  encoder1Pos = 0;
+  encoder2Pos = 0;
+
+  // Small delay before restarting
+  delay(500);
+
+  Serial.println("Motors restarted");
+}
+
+void moveBackward(int durationSeconds) {
+  // Set motor directions to backward
+  digitalWrite(MOTOR1_IN1, LOW);
+  digitalWrite(MOTOR1_IN2, HIGH);
+  digitalWrite(MOTOR2_IN3, LOW);
+  digitalWrite(MOTOR2_IN4, HIGH);
+
+  // Set motor speeds
+  analogWrite(MOTOR1_PWM, baseSpeed);
+  analogWrite(MOTOR2_PWM, baseSpeed);
+
+  // Move backward for the specified duration
+  delay(durationSeconds * 1000);
+
+  // Stop the motors
+  analogWrite(MOTOR1_PWM, 0);
+  analogWrite(MOTOR2_PWM, 0);
+
+  Serial.println("Motors stopped after moving backward");
+}
+
+void calculateError() {
+  int c = 0;
+  // Read accelerometer values 200 times
+  while (c < 200) {
+    readAcceleration();
+    AccErrorX += (atan(AccY / sqrt(pow(AccX, 2) + pow(AccZ, 2))) * 180 / PI);
+    AccErrorY += (atan(-1 * AccX / sqrt(pow(AccY, 2) + pow(AccZ, 2))) * 180 / PI);
+    c++;
+  }
+  // Divide the sum by 200 to get the error value
+  AccErrorX /= 200;
+  AccErrorY /= 200;
+
+  c = 0;
+  // Read gyro values 200 times
+  while (c < 200) {
+    readGyro();
+    GyroErrorX += GyroX;
+    GyroErrorY += GyroY;
+    GyroErrorZ += GyroZ;
+    c++;
+  }
+  // Divide the sum by 200 to get the error value
+  GyroErrorX /= 200;
+  GyroErrorY /= 200;
+  GyroErrorZ /= 200;
+}
+
+void readMPU6050() {
+  // === Read accelerometer data === //
+  readAcceleration();
+  // Calculating Roll and Pitch from the accelerometer data
+  float accAngleX = (atan(AccY / sqrt(pow(AccX, 2) + pow(AccZ, 2))) * 180 / PI) - AccErrorX;
+  float accAngleY = (atan(-1 * AccX / sqrt(pow(AccY, 2) + pow(AccZ, 2))) * 180 / PI) - AccErrorY;
+
+  // === Read gyroscope data === //
+  previousTime = currentTime;
+  currentTime = micros();
+  elapsedTime = (currentTime - previousTime) / 1000000.0;  // Divide by 1000000 to get seconds
+  readGyro();
+  // Correct the outputs with the calculated error values
+  GyroX -= GyroErrorX;
+  GyroY -= GyroErrorY;
+  GyroZ -= GyroErrorZ;
+  // Currently the raw values are in degrees per second, deg/s, so we need to multiply by seconds (s) to get the angle in degrees
+  float gyroAngleX = GyroX * elapsedTime; // deg/s * s = deg
+  float gyroAngleY = GyroY * elapsedTime;
+  yaw += GyroZ * elapsedTime;
+  // Combine accelerometer and gyro-estimated angle values
+  roll = 0.96 * gyroAngleX + 0.04 * accAngleX;
+  pitch = 0.96 * gyroAngleY + 0.04 * accAngleY;
+  angle = roll; // Assuming roll is the angle we need to maintain
+}
+
+void readAcceleration() {
+  Wire.beginTransmission(MPU);
+  Wire.write(0x3B);  // Start with register 0x3B (ACCEL_XOUT_H)
+  Wire.endTransmission(false);
+  Wire.requestFrom((uint8_t)MPU, (size_t)6, true); // Corrected function call
+  // For a range of +-2g, divide the raw values by 16384, according to the MPU6050 datasheet
+  AccX = (Wire.read() << 8 | Wire.read()) / 16384.0;
+  AccY = (Wire.read() << 8 | Wire.read()) / 16384.0;
+  AccZ = (Wire.read() << 8 | Wire.read()) / 16384.0;
+}
+
+void readGyro() {
+  Wire.beginTransmission(MPU);
+  Wire.write(0x43); // Gyro data starts at register 0x43
+  Wire.endTransmission(false);
+  Wire.requestFrom((uint8_t)MPU, (size_t)6, true); // Corrected function call
+  GyroX = (Wire.read() << 8 | Wire.read()) / 131.0; // For a range of +-250 degrees/s, divide by 131
+  GyroY = (Wire.read() << 8 | Wire.read()) / 131.0;
+  GyroZ = (Wire.read() << 8 | Wire.read()) / 131.0;
+}
