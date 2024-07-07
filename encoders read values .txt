@@ -1,0 +1,89 @@
+#include "Arduino.h"
+
+// Define encoder pins
+#define ENCODER1_C1 34
+#define ENCODER1_C2 35
+#define ENCODER2_C1 21
+#define ENCODER2_C2 19
+
+volatile int encoder1Pos = 0;
+volatile int encoder2Pos = 0;
+portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+
+void IRAM_ATTR updateEncoder1C1() {
+  int A = digitalRead(ENCODER1_C1);
+  int B = digitalRead(ENCODER1_C2);
+  portENTER_CRITICAL_ISR(&mux);
+  if (A == B) {
+    encoder1Pos++;
+  } else {
+    encoder1Pos--;
+  }
+  portEXIT_CRITICAL_ISR(&mux);
+}
+
+void IRAM_ATTR updateEncoder1C2() {
+  int A = digitalRead(ENCODER1_C1);
+  int B = digitalRead(ENCODER1_C2);
+  portENTER_CRITICAL_ISR(&mux);
+  if (A != B) {
+    encoder1Pos++;
+  } else {
+    encoder1Pos--;
+  }
+  portEXIT_CRITICAL_ISR(&mux);
+}
+
+void IRAM_ATTR updateEncoder2C1() {
+  int A = digitalRead(ENCODER2_C1);
+  int B = digitalRead(ENCODER2_C2);
+  portENTER_CRITICAL_ISR(&mux);
+  if (A == B) {
+    encoder2Pos++;
+  } else {
+    encoder2Pos--;
+  }
+  portEXIT_CRITICAL_ISR(&mux);
+}
+
+void IRAM_ATTR updateEncoder2C2() {
+  int A = digitalRead(ENCODER2_C1);
+  int B = digitalRead(ENCODER2_C2);
+  portENTER_CRITICAL_ISR(&mux);
+  if (A != B) {
+    encoder2Pos++;
+  } else {
+    encoder2Pos--;
+  }
+  portEXIT_CRITICAL_ISR(&mux);
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  // Set encoder pins as inputs
+  pinMode(ENCODER1_C1, INPUT);
+  pinMode(ENCODER1_C2, INPUT);
+  pinMode(ENCODER2_C1, INPUT);
+  pinMode(ENCODER2_C2, INPUT);
+
+  // Attach interrupts
+  attachInterrupt(digitalPinToInterrupt(ENCODER1_C1), updateEncoder1C1, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ENCODER1_C2), updateEncoder1C2, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ENCODER2_C1), updateEncoder2C1, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ENCODER2_C2), updateEncoder2C2, CHANGE);
+}
+
+void loop() {
+  // Print encoder values
+  portENTER_CRITICAL(&mux);
+  int enc1Pos = encoder1Pos;
+  int enc2Pos = encoder2Pos;
+  portEXIT_CRITICAL(&mux);
+
+  Serial.print("Encoder 1 Position: ");
+  Serial.println(enc1Pos);
+  //Serial.print("Encoder 2 Position: ");
+  //Serial.println(enc2Pos);
+
+}
