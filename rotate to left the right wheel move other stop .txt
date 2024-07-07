@@ -1,0 +1,136 @@
+// Define PWM pins for motor speed control
+#define MOTOR1_PWM 5
+#define MOTOR2_PWM 32
+
+// Define motor control pins
+#define MOTOR1_IN1 22
+#define MOTOR1_IN2 23
+#define MOTOR2_IN3 25
+#define MOTOR2_IN4 26
+
+// Define encoder pins
+#define ENCODER1_C1 34
+#define ENCODER1_C2 35
+#define ENCODER2_C1 21
+#define ENCODER2_C2 19
+
+volatile int encoder1Pos = 0;
+volatile int encoder2Pos = 0;
+portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+
+void IRAM_ATTR updateEncoder1C1() {
+  int A = digitalRead(ENCODER1_C1);
+  int B = digitalRead(ENCODER1_C2);
+  portENTER_CRITICAL_ISR(&mux);
+  if (A == B) {
+    encoder1Pos++;
+  } else {
+    encoder1Pos--;
+  }
+  portEXIT_CRITICAL_ISR(&mux);
+}
+
+void IRAM_ATTR updateEncoder1C2() {
+  int A = digitalRead(ENCODER1_C1);
+  int B = digitalRead(ENCODER1_C2);
+  portENTER_CRITICAL_ISR(&mux);
+  if (A != B) {
+    encoder1Pos++;
+  } else {
+    encoder1Pos--;
+  }
+  portEXIT_CRITICAL_ISR(&mux);
+}
+
+void IRAM_ATTR updateEncoder2C1() {
+  int A = digitalRead(ENCODER2_C1);
+  int B = digitalRead(ENCODER2_C2);
+  portENTER_CRITICAL_ISR(&mux);
+  if (A == B) {
+   encoder2Pos++;
+  } else {
+    encoder2Pos--;
+  }
+  portEXIT_CRITICAL_ISR(&mux);
+}
+
+void IRAM_ATTR updateEncoder2C2() {
+  int A = digitalRead(ENCODER2_C1);
+  int B = digitalRead(ENCODER2_C2);
+  portENTER_CRITICAL_ISR(&mux);
+  if (A != B) {
+    encoder2Pos++;
+  } else {
+    encoder2Pos--;
+  }
+  portEXIT_CRITICAL_ISR(&mux);
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  // Set encoder pins as inputs
+  pinMode(ENCODER1_C1, INPUT);
+  pinMode(ENCODER1_C2, INPUT);
+  pinMode(ENCODER2_C1, INPUT);
+  pinMode(ENCODER2_C2, INPUT);
+
+  // Attach interrupts
+  attachInterrupt(digitalPinToInterrupt(ENCODER1_C1), updateEncoder1C1, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ENCODER1_C2), updateEncoder1C2, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ENCODER2_C1), updateEncoder2C1, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ENCODER2_C2), updateEncoder2C2, CHANGE);
+
+  // Set motor control pins as outputs
+  pinMode(MOTOR1_PWM, OUTPUT);
+  pinMode(MOTOR2_PWM, OUTPUT);
+  pinMode(MOTOR1_IN1, OUTPUT);
+  pinMode(MOTOR1_IN2, OUTPUT);
+  pinMode(MOTOR2_IN3, OUTPUT);
+  pinMode(MOTOR2_IN4, OUTPUT);
+
+  // Initialize motors to off
+  digitalWrite(MOTOR1_IN1, LOW);
+  digitalWrite(MOTOR1_IN2, LOW);
+  digitalWrite(MOTOR2_IN3, LOW);
+  digitalWrite(MOTOR2_IN4, LOW);
+  analogWrite(MOTOR1_PWM, 0);
+  analogWrite(MOTOR2_PWM, 0);
+}
+
+void loop() {
+  portENTER_CRITICAL(&mux);
+  int enc2Pos = encoder2Pos;
+  portEXIT_CRITICAL(&mux);
+
+  if (enc2Pos < 1086) {
+    // Move motor 2
+    digitalWrite(MOTOR2_IN3, HIGH);
+    digitalWrite(MOTOR2_IN4, LOW);
+    analogWrite(MOTOR2_PWM, 100); // Full speed
+  } else {
+    // Stop motor 2
+    digitalWrite(MOTOR2_IN3, LOW);
+    digitalWrite(MOTOR2_IN4, LOW);
+    analogWrite(MOTOR2_PWM, 0);
+
+    // Print final encoder value for debugging
+    Serial.print("Encoder 2 Position before reset: ");
+    Serial.println(enc2Pos);
+
+    // Wait for 10 seconds
+    delay(4000);
+
+    // Reset encoder position after the delay
+    portENTER_CRITICAL(&mux);
+    encoder2Pos = 0;
+    portEXIT_CRITICAL(&mux);
+
+    // Print reset message for debugging
+    Serial.println("Encoder 2 Position reset.");
+  }
+
+  // Print encoder value for debugging
+  Serial.print("Encoder 2 Position: ");
+  Serial.println(enc2Pos);
+}
