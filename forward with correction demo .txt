@@ -1,0 +1,193 @@
+#include "Arduino.h"
+
+// Define PWM pins for motor speed control
+#define MOTOR1_PWM 5
+#define MOTOR2_PWM 32
+
+// Define motor control pins
+#define MOTOR1_IN1 22
+#define MOTOR1_IN2 23
+#define MOTOR2_IN3 25
+#define MOTOR2_IN4 26
+
+// Define encoder pins
+#define ENCODER1_C1 34
+#define ENCODER1_C2 35
+#define ENCODER2_C1 21
+#define ENCODER2_C2 19
+
+volatile int encoder1Pos = 0;
+volatile int encoder2Pos = 0;
+portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+
+int motor1Speed = 120;
+int motor2Speed = 120;
+unsigned long lastChangeTime1 = 0;
+unsigned long lastChangeTime2 = 0;
+int lastEnc1Pos = 0;
+int lastEnc2Pos = 0;
+
+void IRAM_ATTR updateEncoder1C1() {
+  int A = digitalRead(ENCODER1_C1);
+  int B = digitalRead(ENCODER1_C2);
+  portENTER_CRITICAL_ISR(&mux);
+  if (A == B) {
+    encoder1Pos++;
+  } else {
+    encoder1Pos--;
+  }
+  portEXIT_CRITICAL_ISR(&mux);
+}
+
+void IRAM_ATTR updateEncoder1C2() {
+  int A = digitalRead(ENCODER1_C1);
+  int B = digitalRead(ENCODER1_C2);
+  portENTER_CRITICAL_ISR(&mux);
+  if (A != B) {
+    encoder1Pos++;
+  } else {
+    encoder1Pos--;
+  }
+  portEXIT_CRITICAL_ISR(&mux);
+}
+
+void IRAM_ATTR updateEncoder2C1() {
+  int A = digitalRead(ENCODER2_C1);
+  int B = digitalRead(ENCODER2_C2);
+  portENTER_CRITICAL_ISR(&mux);
+  if (A == B) {
+    encoder2Pos++;
+  } else {
+    encoder2Pos--;
+  }
+  portEXIT_CRITICAL_ISR(&mux);
+}
+
+void IRAM_ATTR updateEncoder2C2() {
+  int A = digitalRead(ENCODER2_C1);
+  int B = digitalRead(ENCODER2_C2);
+  portENTER_CRITICAL_ISR(&mux);
+  if (A != B) {
+    encoder2Pos++;
+  } else {
+    encoder2Pos--;
+  }
+  portEXIT_CRITICAL_ISR(&mux);
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  // Set encoder pins as inputs
+  pinMode(ENCODER1_C1, INPUT);
+  pinMode(ENCODER1_C2, INPUT);
+  pinMode(ENCODER2_C1, INPUT);
+  pinMode(ENCODER2_C2, INPUT);
+
+  // Attach interrupts
+  attachInterrupt(digitalPinToInterrupt(ENCODER1_C1), updateEncoder1C1, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ENCODER1_C2), updateEncoder1C2, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ENCODER2_C1), updateEncoder2C1, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ENCODER2_C2), updateEncoder2C2, CHANGE);
+
+  // Set motor control pins as outputs
+  pinMode(MOTOR1_PWM, OUTPUT);
+  pinMode(MOTOR2_PWM, OUTPUT);
+  pinMode(MOTOR1_IN1, OUTPUT);
+  pinMode(MOTOR1_IN2, OUTPUT);
+  pinMode(MOTOR2_IN3, OUTPUT);
+  pinMode(MOTOR2_IN4, OUTPUT);
+
+  // Initialize motors to off
+  digitalWrite(MOTOR1_IN1, HIGH);
+  digitalWrite(MOTOR1_IN2, LOW);
+  digitalWrite(MOTOR2_IN3, HIGH);
+  digitalWrite(MOTOR2_IN4, LOW);
+  analogWrite(MOTOR1_PWM, motor1Speed);
+  analogWrite(MOTOR2_PWM, motor2Speed);
+}
+
+void optimizeSpeed(int &motor1Speed, int &motor2Speed, int enc1Pos, int enc2Pos) {
+  int diff = enc1Pos - enc2Pos;
+
+  // Adjust motor speeds based on encoder differences
+  if (abs(diff) >= 50) {
+    if (diff > 0) {
+      motor1Speed = 0; // Slow down motor 1
+      motor2Speed = 70; // Maintain speed of motor 2
+    } else {
+      motor1Speed = 70; // Maintain speed of motor 1
+      motor2Speed = 0; // Slow down motor 2
+    }
+    Serial.println("Correcting motor speeds...");
+  } else if (abs(diff) < 25) {
+    motor1Speed = 100; // Maintain speed of motor 1
+    motor2Speed = 100; // Maintain speed of motor 2
+  }
+  
+}
+
+void checkEncoderStall(int enc1Pos, int enc2Pos, unsigned long currentTime) {
+
+  int diff = enc1Pos - enc2Pos;
+
+  if (enc1Pos != lastEnc1Pos) {
+    lastChangeTime1 = currentTime;
+    lastEnc1Pos = enc1Pos;
+  }
+
+  if (enc2Pos != lastEnc2Pos) {
+    lastChangeTime2 = currentTime;
+    lastEnc2Pos = enc2Pos;
+  }
+
+  // Increase speed by 30% if encoder values haven't changed for more than 3 seconds
+  if (currentTime - lastChangeTime1 > 500  && abs(diff) < 6 && motor2Speed == 0)   {
+    motor1Speed = min(255, static_cast<int>(motor1Speed * 1.3));
+    lastChangeTime1 = currentTime; // Reset the timer to avoid continuous increase
+  }
+
+  if (currentTime - lastChangeTime2 > 500   && abs(diff) <6 && motor1Speed == 0){
+    motor2Speed = min(255, static_cast<int>(motor2Speed * 1.3));
+    lastChangeTime2 = currentTime; // Reset the timer to avoid continuous increase
+  }
+
+  if (currentTime - lastChangeTime1 > 500 && currentTime - lastChangeTime2 > 3000 && abs(diff) > 15) {
+    motor1Speed = 100;
+    motor2Speed = 100;
+  }
+
+}
+
+void loop() {
+  portENTER_CRITICAL(&mux);
+  int enc1Pos = encoder1Pos;
+  int enc2Pos = encoder2Pos;
+  portEXIT_CRITICAL(&mux);
+
+  unsigned long currentTime = millis();
+
+ // Optimize motor speeds
+  optimizeSpeed(motor1Speed, motor2Speed, enc1Pos, enc2Pos);
+
+// Check and handle encoder stall
+  checkEncoderStall(enc1Pos, enc2Pos, currentTime);
+
+ 
+
+  // Apply the motor speeds
+  analogWrite(MOTOR1_PWM, motor1Speed);
+  analogWrite(MOTOR2_PWM, motor2Speed);
+
+  // Print encoder values
+  Serial.print("Encoder 1 Position: ");
+  Serial.print(enc1Pos);
+  Serial.print("  Encoder 2 Position: ");
+  Serial.print(enc2Pos);
+  Serial.print("  Motor 1 Speed: ");
+  Serial.print(motor1Speed);
+  Serial.print("  Motor 2 Speed: ");
+  Serial.println(motor2Speed);
+
+  delay(100); // Adjust delay for smoother control
+}
