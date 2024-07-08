@@ -1,24 +1,22 @@
-#define IR_SENSOR_PIN 4
-#define IR_SENSOR_PIN2 16
+int IR_PIN1 = 33; // Pin connected to first IR sensor
+int IR_PIN2 = 27; // Pin connected to second IR sensor
 
 void setup() {
-  // Initialize serial communication for debugging
-  Serial.begin(115200);
-  
-  // Initialize IR sensor pins as input
-  pinMode(IR_SENSOR_PIN, INPUT);
-  pinMode(IR_SENSOR_PIN2, INPUT);
+  Serial.begin(115200);    // Initialize serial communication
+  pinMode(IR_PIN1, INPUT); // Set pin 33 as input
+  pinMode(IR_PIN2, INPUT); // Set pin 27 as input
 }
 
 void loop() {
-  int sensorValue1 = digitalRead(IR_SENSOR_PIN);
-  int sensorValue2 = digitalRead(IR_SENSOR_PIN2);
+  int sensorValue1 = digitalRead(IR_PIN1); // Read the value from the first IR sensor
+  int sensorValue2 = digitalRead(IR_PIN2); // Read the value from the second IR sensor
   
-  Serial.print("IR Sensor 1: ");
-  Serial.println(sensorValue1);
+  Serial.print("IR Sensor 1 Value:  ");     // Print label for first sensor
+  Serial.print(sensorValue1);            // Print the value of the first sensor
   
-  Serial.print("IR Sensor 2: ");
-  Serial.println(sensorValue2);
-  
-  delay(1000); // Wait for 1 second
+  Serial.print("  IR Sensor 2 Value: ");     // Print label for second sensor
+  Serial.print(sensorValue2);            // Print the value of the second sensor
+  Serial.println("");
+
+  delay(100); // Wait for a short period before reading again
 }
