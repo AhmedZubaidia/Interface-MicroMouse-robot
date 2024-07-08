@@ -7,7 +7,7 @@ void setup() {
   Serial.begin(9600);
   
   // Initialize I2C communication on specific pins
-  Wire.begin(21,22); // SDA = GPIO 16, SCL = GPIO 17
+  Wire.begin(4,16); // SDA = GPIO 16, SCL = GPIO 17
   
   sensor.init();
   sensor.setTimeout(500);
