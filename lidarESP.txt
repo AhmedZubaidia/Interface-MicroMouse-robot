@@ -23,6 +23,7 @@ void loop() {
   int distance = sensor.readRangeContinuousMillimeters();
   
   Serial.print("Distance: ");
+  distance = distance - 30;
   Serial.print(distance);
   Serial.print("mm");
   if (sensor.timeoutOccurred()) {
