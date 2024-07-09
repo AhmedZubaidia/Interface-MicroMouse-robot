@@ -1,0 +1,232 @@
+#include <Wire.h>
+#include <VL53L0X.h>
+#include <PID_v1_bc.h>
+
+/** IR PINS **/
+const byte IRFL = 27;  // Left IR sensor
+const byte IRFR = 33;  // Right IR sensor
+
+/** ENCODER PINS **/
+const byte LEFT_ENCODER_A = 34;   // Left encoder pin A
+const byte LEFT_ENCODER_B = 35;   // Left encoder pin B
+const byte RIGHT_ENCODER_A = 21;  // Right encoder pin A
+const byte RIGHT_ENCODER_B = 19;  // Right encoder pin B
+
+/** MOTOR PINS **/
+const byte IN1 = 22;  // Left Motor Negative
+const byte IN2 = 23;  // Left Motor Positive
+const byte IN3 = 25;  // Right Motor Negative
+const byte IN4 = 26;  // Right Motor Positive
+const byte ENL = 5;   // Enable for Left motor
+const byte ENR = 32;  // Enable for Right motor
+
+/** PID VARIABLES **/
+double kp = 2, ki = 5, kd = 1;
+double error = 0, desired = 0, dPWM = 0;
+volatile double currentError = 0;
+PID pidNew(&error, &dPWM, &desired, kp, ki, kd, DIRECT);
+
+/** VL53L0X Sensor Object **/
+VL53L0X sensor;
+
+
+/** FOR PIDs **/
+volatile long int encoderCountR = 0;
+volatile long int encoderCountL = 0;
+
+volatile long int prevEncoderCountR = -1000000;
+volatile long int prevEncoderCountL = -1000000;
+
+int timerCounter = 42098;
+
+volatile int state = 0;  // 0 => forward, 1=> left, 2=> right
+
+void setup() {
+  Serial.begin(9600);
+
+  Wire.begin(4,16); //SDA and SDL for the Lidar
+  sensor.init();
+  sensor.setTimeout(500);
+  sensor.startContinuous();
+
+  // Encoder Pins as inputs
+  pinMode(LEFT_ENCODER_A, INPUT);
+  pinMode(LEFT_ENCODER_B, INPUT);
+  pinMode(RIGHT_ENCODER_A, INPUT);
+  pinMode(RIGHT_ENCODER_B, INPUT);
+
+  // H-bridge pins as output
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
+  pinMode(IN3, OUTPUT);
+  pinMode(IN4, OUTPUT);
+  // Enable pins
+  pinMode(ENL, OUTPUT);
+  pinMode(ENR, OUTPUT);
+
+  // Set the H-bridge inputs to LOW
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, LOW);
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, LOW);
+
+  // PIDs as automatic
+  pidNew.SetMode(AUTOMATIC);
+
+  // Set the H-bridge inputs 2 and 4 to High
+  digitalWrite(IN2, HIGH);
+  digitalWrite(IN4, HIGH);
+
+  // Set encoder pins B from both motor encoders as hardware interrupts
+  attachInterrupt(digitalPinToInterrupt(RIGHT_ENCODER_A), updateEncoderR, RISING);
+  attachInterrupt(digitalPinToInterrupt(LEFT_ENCODER_A), updateEncoderL, RISING);
+
+ 
+  delay(1000);
+}
+
+void loop() {
+  // Measure distance using VL53L0X Lidar sensor
+  int distance = sensor.readRangeContinuousMillimeters();
+
+  // Print distance to serial monitor
+  Serial.print("Distance (Lidar): ");
+  Serial.print(distance);
+  Serial.println(" mm");
+
+  // Check left and right sensors
+  bool leftClear = digitalRead(IRFL);
+  bool rightClear = digitalRead(IRFR);
+
+  // Check for obstacles in front
+  if (distance < 80) { // Adjust distance threshold as needed
+    Serial.println("FRONT Obstacle detected!");
+    stopAll();
+    delay(500);
+
+    Serial.print("Left IR sensor: ");
+    Serial.println(leftClear ? "Clear" : "Blocked");
+    Serial.print("Right IR sensor: ");
+    Serial.println(rightClear ? "Clear" : "Blocked");
+
+    if (leftClear && !rightClear) {
+      Serial.println("Turning left.");
+      turn_left(60, 70);
+      forward(70);
+      delay(500);
+    } else if (!leftClear && rightClear) {
+      Serial.println("Turning right.");
+      turn_right(50, 80);
+      forward(80);
+      delay(500);
+    } else if (leftClear && rightClear) {
+      Serial.println("Both sides clear, turning left.");
+      turn_left(60, 70);
+      forward(70);
+      delay(500);
+    } else {
+      turn_right(50, 80);
+      forward(70);
+      delay(500);
+    }
+  } else {
+    forward(70);
+  }
+}
+
+void updateEncoderL() {
+  if (digitalRead(LEFT_ENCODER_B) == LOW) {
+    encoderCountL--;
+  } else {
+    encoderCountL++;
+  }
+}
+
+void updateEncoderR() {
+  if (digitalRead(RIGHT_ENCODER_B) == LOW) {
+    encoderCountR++;
+  } else {
+    encoderCountR--;
+  }
+}
+
+void stopAll() {
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, LOW);
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, LOW);
+  analogWrite(ENL, 0);
+  analogWrite(ENR, 0);
+}
+
+void turn_left(int steps, int mspeed) {
+  encoderCountL = 0;
+  encoderCountR = 0;
+
+  digitalWrite(IN2, LOW);
+  digitalWrite(IN1, HIGH);
+
+  digitalWrite(IN4, HIGH);
+  digitalWrite(IN3, LOW);
+
+  error = 0;
+  while (steps > (encoderCountL + encoderCountR) / 2) {
+    myPID2();
+
+    if (error >= 0) {
+      if (steps > encoderCountL) {
+        analogWrite(ENL, mspeed + (dPWM / 2));
+      }
+      if (steps > encoderCountR) {
+        analogWrite(ENR, mspeed - (dPWM / 2));
+      }
+    }
+    if (error < 0) {
+      if (steps > encoderCountL) {
+        analogWrite(ENL, mspeed - (dPWM / 2));
+      }
+      if (steps > encoderCountR) {
+        analogWrite(ENR, mspeed + (dPWM / 2));
+      }
+    }
+  }
+  stopAll();
+  delay(100);
+}
+
+void turn_right(int duration, int mspeed) {
+  digitalWrite(IN2, HIGH);
+  digitalWrite(IN1, LOW);
+
+  digitalWrite(IN4, LOW);
+  digitalWrite(IN3, HIGH);
+
+  analogWrite(ENL, mspeed);
+  analogWrite(ENR, mspeed);
+
+  delay(duration);
+
+  stopAll();
+  delay(100);
+}
+
+void myPID2() {
+  error = encoderCountR - encoderCountL;
+  pidNew.Compute();
+}
+
+
+void forward(int speed) {
+
+encoderCountL = 0;  //  reset counter A to zero
+encoderCountR = 0;  //  reset counter B to zero
+digitalWrite(IN1, LOW);   // Set Motor A direction
+digitalWrite(IN2, HIGH);  // Set Motor A direction
+
+digitalWrite(IN3, LOW);   // Set Motor B direction
+digitalWrite(IN4, HIGH);  // Set Motor B direction
+
+analogWrite(ENL, speed);  // Set Motor A speed
+analogWrite(ENR, speed);  // Set Motor B speed
+
+}
