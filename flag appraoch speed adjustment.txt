@@ -1,0 +1,199 @@
+#include "Arduino.h"
+
+// Define PWM pins for motor speed control
+#define MOTOR1_PWM 5
+#define MOTOR2_PWM 32
+
+// Define motor control pins
+#define MOTOR1_IN1 22
+#define MOTOR1_IN2 23
+#define MOTOR2_IN3 25
+#define MOTOR2_IN4 26
+
+// Define encoder pins
+#define ENCODER1_C1 34
+#define ENCODER1_C2 35
+#define ENCODER2_C1 21
+#define ENCODER2_C2 19
+
+// Define timer
+hw_timer_t * timer = NULL;
+volatile unsigned long elapsedTime = 0;
+volatile bool timeFlags[8] = {false};
+volatile bool leftWheelFlags[8] = {false};
+volatile bool rightWheelFlags[8] = {false};
+volatile bool bothWheelsFlags[8] = {false};
+
+// Encoder position variables
+volatile long encoder1Pos = 0;
+volatile long encoder2Pos = 0;
+volatile long lastEncoder1Pos = 0;
+volatile long lastEncoder2Pos = 0;
+
+// Mutex for critical sections
+portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+
+// Encoder interrupt service routines
+void IRAM_ATTR updateEncoder1C1() {
+  int A = digitalRead(ENCODER1_C1);
+  int B = digitalRead(ENCODER1_C2);
+  portENTER_CRITICAL_ISR(&mux);
+  if (A == B) {
+    encoder1Pos++;
+  } else {
+    encoder1Pos--;
+  }
+  portEXIT_CRITICAL_ISR(&mux);
+}
+
+void IRAM_ATTR updateEncoder1C2() {
+  int A = digitalRead(ENCODER1_C1);
+  int B = digitalRead(ENCODER1_C2);
+  portENTER_CRITICAL_ISR(&mux);
+  if (A != B) {
+    encoder1Pos++;
+  } else {
+    encoder1Pos--;
+  }
+  portEXIT_CRITICAL_ISR(&mux);
+}
+
+void IRAM_ATTR updateEncoder2C1() {
+  int A = digitalRead(ENCODER2_C1);
+  int B = digitalRead(ENCODER2_C2);
+  portENTER_CRITICAL_ISR(&mux);
+  if (A == B) {
+    encoder2Pos++;
+  } else {
+    encoder2Pos--;
+  }
+  portEXIT_CRITICAL_ISR(&mux);
+}
+
+void IRAM_ATTR updateEncoder2C2() {
+  int A = digitalRead(ENCODER2_C1);
+  int B = digitalRead(ENCODER2_C2);
+  portENTER_CRITICAL_ISR(&mux);
+  if (A != B) {
+    encoder2Pos++;
+  } else {
+    encoder2Pos--;
+  }
+  portEXIT_CRITICAL_ISR(&mux);
+}
+
+void IRAM_ATTR onTimer() {
+  elapsedTime += 1;  // Increment elapsed time by 1 ms
+
+  // Set flags for every 0.5 seconds (500 ms)
+  if (elapsedTime % 500 == 0) {
+    int index = (elapsedTime / 500) - 1;
+    if (index >= 0 && index < 8) {
+      if (encoder1Pos == lastEncoder1Pos) {
+        leftWheelFlags[index] = true;
+      } else {
+        leftWheelFlags[index] = false;
+      }
+
+      if (encoder2Pos == lastEncoder2Pos) {
+        rightWheelFlags[index] = true;
+      } else {
+        rightWheelFlags[index] = false;
+      }
+
+      if (encoder1Pos == lastEncoder1Pos && encoder2Pos == lastEncoder2Pos) {
+        bothWheelsFlags[index] = true;
+      } else {
+        bothWheelsFlags[index] = false;
+      }
+
+      lastEncoder1Pos = encoder1Pos;
+      lastEncoder2Pos = encoder2Pos;
+    }
+  }
+
+  // Reset elapsedTime after 4000 ms
+  if (elapsedTime == 4000) {
+    elapsedTime = 0;
+    // Reset all flags
+    for (int i = 0; i < 8; i++) {
+      leftWheelFlags[i] = false;
+      rightWheelFlags[i] = false;
+      bothWheelsFlags[i] = false;
+    }
+  }
+}
+
+void setup() {
+  // Initialize serial communication
+  Serial.begin(115200);
+
+  // Configure motor control pins
+  pinMode(MOTOR1_PWM, OUTPUT);
+  pinMode(MOTOR2_PWM, OUTPUT);
+  pinMode(MOTOR1_IN1, OUTPUT);
+  pinMode(MOTOR1_IN2, OUTPUT);
+  pinMode(MOTOR2_IN3, OUTPUT);
+  pinMode(MOTOR2_IN4, OUTPUT);
+
+  // Configure encoder pins
+  pinMode(ENCODER1_C1, INPUT);
+  pinMode(ENCODER1_C2, INPUT);
+  pinMode(ENCODER2_C1, INPUT);
+  pinMode(ENCODER2_C2, INPUT);
+
+  // Attach interrupts for encoders
+  attachInterrupt(digitalPinToInterrupt(ENCODER1_C1), updateEncoder1C1, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ENCODER1_C2), updateEncoder1C2, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ENCODER2_C1), updateEncoder2C1, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ENCODER2_C2), updateEncoder2C2, CHANGE);
+
+  // Configure timer
+  timer = timerBegin(0, 80, true);  // Timer 0, prescaler 80, count up
+  timerAttachInterrupt(timer, &onTimer, true);  // Attach ISR to timer
+  timerAlarmWrite(timer, 1000, true);  // Set alarm to 1 ms (80 MHz / 80 = 1 MHz, so 1000 counts = 1 ms)
+  timerAlarmEnable(timer);  // Enable the alarm
+}
+
+void loop() {
+  // Set motor 1 to move forward
+  digitalWrite(MOTOR1_IN1, HIGH);
+  digitalWrite(MOTOR1_IN2, LOW);
+  analogWrite(MOTOR1_PWM, 120);  // Set PWM value for speed control (0-255)
+
+  // Set motor 2 to move forward
+  digitalWrite(MOTOR2_IN3, HIGH);
+  digitalWrite(MOTOR2_IN4, LOW);
+  analogWrite(MOTOR2_PWM, 120);  // Set PWM value for speed control (0-255)
+
+
+  // Print the left wheel flags
+  Serial.print("Left Wheel Flags: ");
+  for (int i = 0; i < 8; i++) {
+    Serial.print(leftWheelFlags[i]);
+    if (i < 7) Serial.print(", ");
+  }
+  Serial.println();
+
+  // Print the right wheel flags
+  Serial.print("Right Wheel Flags: ");
+  for (int i = 0; i < 8; i++) {
+    Serial.print(rightWheelFlags[i]);
+    if (i < 7) Serial.print(", ");
+  }
+  Serial.println();
+
+  // Print the both wheels flags
+  Serial.print("Both Wheels Flags: ");
+  for (int i = 0; i < 8; i++) {
+    Serial.print(bothWheelsFlags[i]);
+    if (i < 7) Serial.print(", ");
+  }
+  Serial.println();
+
+  delay(100);  // Adjust delay for smoother control
+
+
+  // Small delay to prevent overwhelming the serial output
+  delay(100);
+}
