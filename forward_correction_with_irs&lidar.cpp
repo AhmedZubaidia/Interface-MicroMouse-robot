@@ -52,8 +52,8 @@ volatile int motorIncrement1 = 0;         // Global variable to store the increm
 volatile int motorIncrement2 = 0;         // Global variable to store the increment value for motor 2
 volatile unsigned long lastDiffTime = 0;  // Global variable to track the time of the last difference
 
-int temp1_speed=110; //basic speed for correction 
-int temp2_speed=110;
+int temp1_speed=90; //basic speed for correction 
+int temp2_speed=90;
 
 #define IR_PIN1 33
 #define IR_PIN2 27
@@ -61,6 +61,8 @@ int temp2_speed=110;
 volatile bool ir1Low = false;  // Flag for IR1 being low
 volatile bool ir2Low = false;  // Flag for IR2 being low
 
+unsigned long previousMillis = 0;
+const long interval = 10;  // interval to read sensors (10 milliseconds)
 
 
 // EEPROM addresses for saving speeds
@@ -109,7 +111,7 @@ void IRAM_ATTR onTimer() {
         rightWheelFlags[index] = false;
       }
 
-      if (encoder1Pos == lastEncoder1Pos && encoder2Pos == lastEncoder2Pos) {
+      if ( abs(encoder1Pos - lastEncoder1Pos)<5  && abs(encoder2Pos - lastEncoder2Pos) <5) {
         bothWheelsFlags[index] = true;
       } else {
         bothWheelsFlags[index] = false;
@@ -195,45 +197,6 @@ void IRAM_ATTR ir2ISR() {
 }
 
 
-
-void checkDistanceAndControlMotors() {
-  int distance = sensor.readRangeContinuousMillimeters();
-  if (sensor.timeoutOccurred()) {
-    Serial.println(" TIMEOUT");
-    // Handle timeout: stop motors or take appropriate action
-    motor1Speed = 0;
-    motor2Speed = 0;
-    analogWrite(MOTOR1_PWM, motor1Speed);
-    analogWrite(MOTOR2_PWM, motor2Speed);
-    return;
-  }
-
-  if (distance <= 150) {
-    motor1Speed = 0;
-    motor2Speed = 0;
-    rotateMotor1ToRight();
-    rest_moveForward();
-  }
-
-  // Apply the motor speeds
-  analogWrite(MOTOR1_PWM, motor1Speed);
-  analogWrite(MOTOR2_PWM, motor2Speed);
-
-  // Print distance for debugging
-  Serial.print("Distance: ");
-  Serial.print(distance);
-  Serial.println(" mm");
-}
-
-
-void startDistanceChecking() {
-  distanceTicker.attach(0.1, checkDistanceAndControlMotors);
-}
-
-void stopDistanceChecking() {
-  distanceTicker.detach();
-}
-
 void updateElapsedMillis() {
   globalElapsedMillis++;
 }
@@ -299,8 +262,6 @@ void setup() {
   sensor.setTimeout(500);
   sensor.startContinuous();
 
-  // Attach tickers
-  distanceTicker.attach(0.1, checkDistanceAndControlMotors);
   // encoderTicker.attach(0.5, checkEncoderDifference);
   timeTicker.attach(0.001, updateElapsedMillis);  // Increment globalElapsedMillis every 1 ms
 
@@ -323,26 +284,14 @@ void incrementElapsedMillis() {
 //--------------------- Void loop() -------------------
 
 void loop() {
-  portENTER_CRITICAL(&mux);
-  bool ir1 = ir1Low;
-  bool ir2 = ir2Low;
-  portEXIT_CRITICAL(&mux);
 
-  
-  if (ir1 && ir2) {
-    rotateMotor1ToRight();  // Rotate right if both IR1 and IR2 are low
-  } else if (!ir1 && ir2) {
-    rotateMotor1ToRight();  // Rotate right if IR1 is high and IR2 is low
-  } else if (ir1 && !ir2) {
-    rotateMotor2ToLeft();   // Rotate left if IR1 is low and IR2 is high
+
+    unsigned long currentMillis = millis();
+  if (currentMillis - previousMillis >= interval) {
+    previousMillis = currentMillis;
+    readSensorsAndCheckConditions();
   }
   
-  // Existing code for sensor reading and motor control
-  int distance = sensor.readRangeContinuousMillimeters();
-  if (sensor.timeoutOccurred()) {
-    Serial.println(" TIMEOUT");
-    return;
-  }
 
   portENTER_CRITICAL(&mux);
   int enc1Pos = encoder1Pos;
@@ -386,8 +335,6 @@ void loop() {
   Serial.print("  Motor 2 Speed: ");
   Serial.print(motor2Speed);
   Serial.print("  Distance: ");
-  Serial.print(distance);
-  Serial.println(" mm");
 
   delay(100);  // Adjust delay for smoother control
 }
@@ -399,6 +346,46 @@ void loop() {
 
 // ------------------- Helper Functions -------------------
 
+void readSensorsAndCheckConditions() {
+  portENTER_CRITICAL(&mux);
+  bool ir1 = ir1Low;
+  bool ir2 = ir2Low;
+  portEXIT_CRITICAL(&mux);
+
+  // Read distance from the sensor
+  int distance = sensor.readRangeContinuousMillimeters();
+  if (sensor.timeoutOccurred()) {
+    Serial.println(" TIMEOUT");
+    return;
+  }
+
+  if (ir2) {  // Only proceed with rotation if IR2 is low
+    stopAllMotors();
+
+    if (distance > 80) {
+      if (ir1) {
+        rotateMotor2ToLeft();
+        rest_moveForward();
+      } else {
+        rotateMotor1ToRight();
+        rest_moveForward();
+
+      }
+    }
+  }
+}
+
+void stopAllMotors() {
+  // Stop motor 1
+  digitalWrite(MOTOR1_IN1, LOW);
+  digitalWrite(MOTOR1_IN2, LOW);
+  analogWrite(MOTOR1_PWM, 0);
+
+  // Stop motor 2
+  digitalWrite(MOTOR2_IN3, LOW);
+  digitalWrite(MOTOR2_IN4, LOW);
+  analogWrite(MOTOR2_PWM, 0);
+}
 
 void rest_moveForward() {
 
@@ -422,7 +409,6 @@ void rest_moveForward() {
   digitalWrite(MOTOR1_IN2, LOW);
 }
 
-
 void forward_with_correction(int &motor1Speed, int &motor2Speed) {
     int enc1Pos, enc2Pos;
     int diff;
@@ -433,31 +419,8 @@ void forward_with_correction(int &motor1Speed, int &motor2Speed) {
     portEXIT_CRITICAL(&mux);
 
     diff = enc1Pos - enc2Pos;
-    unsigned long currentTime = millis();
 
-    // Combined Serial.print statements to print all values in one line
-    Serial.print("enc1Pos: ");
-    Serial.print(enc1Pos);
-    Serial.print(" | enc2Pos: ");
-    Serial.print(enc2Pos);
-    Serial.print(" | diff: ");
-    Serial.print(diff);
-    Serial.print(" | motor1Speed: ");
-    Serial.print(motor1Speed);
-    Serial.print(" | motor2Speed: ");
-    Serial.print(motor2Speed);
-    Serial.print(" | motorIncrement1: ");
-    Serial.print(motorIncrement1);
-    Serial.print(" | motorIncrement2: ");
-    Serial.print(motorIncrement2);
-    Serial.print(" | motorIncrement1_both: ");
-    Serial.print(motorIncrement1_both);
-    Serial.print(" | motorIncrement2_both: ");
-    Serial.println(motorIncrement2_both);
-
-    delay(100); // Adjust delay to allow time for encoder values to update
-
-    int bothWheels_flag_count = 0;
+     int bothWheels_flag_count = 0;
     int leftWheels_flag_count = 0;
     int rightWheels_flag_count = 0;
 
@@ -469,63 +432,43 @@ void forward_with_correction(int &motor1Speed, int &motor2Speed) {
     }
 
     // Increment motor speeds if the flag count conditions are met
-    if (bothWheels_flag_count > 5 && motor1Speed != 0 && motor2Speed != 0) {
-        motorIncrement1_both = 25;
-        motorIncrement2_both = 25;
+    if (bothWheels_flag_count > 4) {
+         motor1Speed = 135; // Maintain speed of motor 1
+         motor2Speed = 165; // Maintain speed of motor 2
         Serial.println("Inside if (bothWheels_flag_count > 5)");
+        // Apply the adjusted speeds to the motors
+         analogWrite(MOTOR1_PWM, motor1Speed);
+          analogWrite(MOTOR2_PWM, motor2Speed);
 
         for (int i = 0; i < 8; i++) {
             bothWheelsFlags[i] = false;
         }
+
+        delay(200);
     }
 
-    if (leftWheels_flag_count > 5 && motor2Speed == 0 && motor1Speed != 0) {
-        motorIncrement1 = 25;
-        Serial.println("Inside if (leftWheels_flag_count > 5)");
 
-        for (int i = 0; i < 8; i++) {
-            leftWheelFlags[i] = false;
-        }
+
+  // Adjust motor speeds based on encoder differences
+  if (abs(diff) >= 10) {
+    if (diff > 0) {
+      motor1Speed = 10; // Slow down motor 1
+      motor2Speed = 115; // Maintain speed of motor 2
+    } else {
+      motor1Speed = 85; // Maintain speed of motor 1
+      motor2Speed = 0; // Slow down motor 2
     }
-
-    if (rightWheels_flag_count > 3 && motor1Speed == 0 && motor2Speed != 0) {
-        motorIncrement2 = 25;
-        Serial.println("Inside if (rightWheels_flag_count > 3)");
-
-        for (int i = 0; i < 8; i++) {
-            rightWheelFlags[i] = false;
-        }
-    }
-
-    // Adjust motor speeds based on the difference
-    if (abs(diff) > 5) {
-        if (diff > 0) {
-            temp2_speed = min(temp2_speed + motorIncrement2, 220);
-            motor1Speed = 0;
-            motor2Speed = min(temp2_speed, 220);
-        } else {
-            temp1_speed = min(temp1_speed + motorIncrement1, 220);
-            motor1Speed = min(temp1_speed, 220);
-            motor2Speed = 0;
-        }
-    }
-
-    if (abs(diff) < 25) {
-        motor1Speed = min(100 + motorIncrement1_both, 220);
-        motor2Speed = min(120 + motorIncrement2_both, 220);
-    }
-
-    // Reset the motor increment values for the next iteration
-    motorIncrement1 = 0;
-    motorIncrement2 = 0;
-    motorIncrement1_both = 0;
-    motorIncrement2_both = 0;
-
+    Serial.println("Correcting motor speeds...");
+  } else if (abs(diff) < 40) {
+    motor1Speed = 85; // Maintain speed of motor 1
+    motor2Speed = 115; // Maintain speed of motor 2
+  }
     // Apply the adjusted speeds to the motors
     analogWrite(MOTOR1_PWM, motor1Speed);
     analogWrite(MOTOR2_PWM, motor2Speed);
-}
 
+    
+}
 
 
 
@@ -545,10 +488,15 @@ void rotateMotor2ToLeft() {
   digitalWrite(MOTOR1_IN1, LOW);
   digitalWrite(MOTOR1_IN2, LOW);
 
+  
+
   motor1Speed = 0;
-  motor2Speed = 100;
+  motor2Speed = 110;
   analogWrite(MOTOR1_PWM, motor1Speed);
 
+  digitalWrite(MOTOR2_IN3, HIGH);
+  digitalWrite(MOTOR2_IN4, LOW);
+  analogWrite(MOTOR2_PWM, motor2Speed);
 
   // Reset encoder values
   portENTER_CRITICAL(&mux);
@@ -628,6 +576,7 @@ void rotateMotor2ToLeft() {
 void rotateMotor1ToRight() {
 
 
+
     int leftWheels_flag_count = 0;
     int motorIncrement1 = 0;
 
@@ -635,10 +584,13 @@ void rotateMotor1ToRight() {
   digitalWrite(MOTOR2_IN3, LOW);
   digitalWrite(MOTOR2_IN4, LOW);
 
-   motor1Speed = 110;
+   motor1Speed = 118;
    motor2Speed = 0 ;
 
   analogWrite(MOTOR2_PWM, motor2Speed);
+  digitalWrite(MOTOR1_IN1, HIGH);
+  digitalWrite(MOTOR1_IN2, LOW);
+  analogWrite(MOTOR1_PWM, motor1Speed);
 
   // Reset encoder values
   portENTER_CRITICAL(&mux);
@@ -667,7 +619,7 @@ void rotateMotor1ToRight() {
     }
 
 
-    if (enc1Pos < 1080) {
+    if (enc1Pos < 1010) {
       // Move motor 1
       digitalWrite(MOTOR1_IN1, HIGH);
       digitalWrite(MOTOR1_IN2, LOW);
@@ -738,7 +690,7 @@ void rotateMotor1ToRight_backward() {
     int enc1Pos = abs(encoder1Pos);
     portEXIT_CRITICAL(&mux);
 
-    if (enc1Pos < 1080) {
+    if (enc1Pos < 1020) {
       // Move motor 1
       digitalWrite(MOTOR1_IN1, LOW);
       digitalWrite(MOTOR1_IN2, HIGH);
