@@ -285,58 +285,11 @@ void incrementElapsedMillis() {
 
 void loop() {
 
-
-    unsigned long currentMillis = millis();
-  if (currentMillis - previousMillis >= interval) {
-    previousMillis = currentMillis;
     readSensorsAndCheckConditions();
-  }
-  
-
-  portENTER_CRITICAL(&mux);
-  int enc1Pos = encoder1Pos;
-  int enc2Pos = encoder2Pos;
-  portEXIT_CRITICAL(&mux);
-
   forward_with_correction(motor1Speed, motor2Speed);
 
-  // Print the left wheel flags
-  Serial.print("Left Wheel Flags: ");
-  for (int i = 0; i < 8; i++) {
-    Serial.print(leftWheelFlags[i]);
-    if (i < 7) Serial.print(", ");
-  }
-  Serial.println();
-
-  // Print the right wheel flags
-  Serial.print("Right Wheel Flags: ");
-  for (int i = 0; i < 8; i++) {
-    Serial.print(rightWheelFlags[i]);
-    if (i < 7) Serial.print(", ");
-  }
-  Serial.println();
-
-  // Print the both wheels flags
-  Serial.print("Both Wheels Flags: ");
-  for (int i = 0; i < 8; i++) {
-    Serial.print(bothWheelsFlags[i]);
-    if (i < 7) Serial.print(", ");
-  }
-  Serial.println();
 
 
-  // Print encoder values
-  Serial.print("Encoder 1 Position: ");
-  Serial.print(enc1Pos);
-  Serial.print("  Encoder 2 Position: ");
-  Serial.print(enc2Pos);
-  Serial.print("  Motor 1 Speed: ");
-  Serial.print(motor1Speed);
-  Serial.print("  Motor 2 Speed: ");
-  Serial.print(motor2Speed);
-  Serial.print("  Distance: ");
-
-  delay(100);  // Adjust delay for smoother control
 }
 
 
@@ -345,35 +298,46 @@ void loop() {
 
 
 // ------------------- Helper Functions -------------------
-
 void readSensorsAndCheckConditions() {
   portENTER_CRITICAL(&mux);
-  bool ir1 = ir1Low;
-  bool ir2 = ir2Low;
+  bool ir1 = ir1Low; // Front sensor
+  bool ir2 = ir2Low; // Right sensor
   portEXIT_CRITICAL(&mux);
 
   // Read distance from the sensor
   int distance = sensor.readRangeContinuousMillimeters();
   if (sensor.timeoutOccurred()) {
-    Serial.println(" TIMEOUT");
+    Serial.println("TIMEOUT");
     return;
   }
 
-  if (ir2) {  // Only proceed with rotation if IR2 is low
-    stopAllMotors();
+  // Debug print for all variables
+  Serial.print("ir1: "); Serial.print(ir1);
+  Serial.print(", ir2: "); Serial.print(ir2);
+  Serial.print(", distance: "); Serial.println(distance);
 
-    if (distance > 80) {
-      if (ir1) {
-        rotateMotor2ToLeft();
-        rest_moveForward();
-      } else {
-        rotateMotor1ToRight();
-        rest_moveForward();
+  if (ir2) {  // If front sensor (IR1) does not detect an obstacle
+      stopAllMotors();
 
-      }
+     if (!ir1 && distance < 80) {  // If right sensor (IR2) does not detect an obstacle, turn right
+      rotateMotor1ToRight(); // Assuming this function turns the robot to the right
+      rest_moveForward();
+    } else if ( ir1 &&  distance > 80) {  // If distance sensor detects a clear path to the left, turn left
+      rotateMotor2ToLeft(); // Assuming this function turns the robot to the left
+      rest_moveForward();
+    }else if (!ir1 &&  distance > 80){
+
+      rotateMotor1ToRight(); // Assuming this function turns the robot to the right
+      rest_moveForward();
     }
+  } else {  // If front sensor (IR1) detects an obstacle, turn around
+   // rotateMotor1ToRight();
+    //rotateMotor1ToRight();
+    //rest_moveForward();
   }
 }
+
+
 
 void stopAllMotors() {
   // Stop motor 1
@@ -625,7 +589,7 @@ void rotateMotor1ToRight() {
     }
 
 
-    if (enc1Pos < 1086) {
+    if (enc1Pos < 1030) {
       // Move motor 1
       digitalWrite(MOTOR1_IN1, HIGH);
       digitalWrite(MOTOR1_IN2, LOW);
@@ -669,71 +633,4 @@ void rotateMotor1ToRight() {
 }
 
 
-void rotateMotor1ToRight_backward() {
-
-  //stopCheckingEncoderDifference();
-
-
-  // Ensure motor 2 is not moving
-  digitalWrite(MOTOR2_IN3, LOW);
-  digitalWrite(MOTOR2_IN4, LOW);
-
-  motor1Speed = 100;
-  motor2Speed = 0;
-  analogWrite(MOTOR2_PWM, motor2Speed);
-
-
-  // Reset encoder values
-  portENTER_CRITICAL(&mux);
-  encoder1Pos = 0;
-  portEXIT_CRITICAL(&mux);
-
-  //startCheckingEncoderDifference();
-
-  while (true) {
-    portENTER_CRITICAL(&mux);
-    int enc1Pos = abs(encoder1Pos);
-    portEXIT_CRITICAL(&mux);
-
-    if (enc1Pos < 1020) {
-      // Move motor 1
-      digitalWrite(MOTOR1_IN1, LOW);
-      digitalWrite(MOTOR1_IN2, HIGH);
-      analogWrite(MOTOR1_PWM, motor1Speed);  // Full speed
-    } else {
-      // Stop motor 1
-      digitalWrite(MOTOR1_IN1, LOW);
-      digitalWrite(MOTOR1_IN2, LOW);
-
-      motor1Speed = 0;
-
-      analogWrite(MOTOR1_PWM, motor1Speed);
-
-      // Print final encoder value for debugging
-      Serial.print("Encoder 1 Position before reset: ");
-      Serial.println(enc1Pos);
-
-      // Wait for 10 seconds
-      delay(500);
-
-      // Reset encoder positions after the delay
-      portENTER_CRITICAL(&mux);
-      encoder1Pos = 0;
-      portEXIT_CRITICAL(&mux);
-
-      // Print reset message for debugging
-      Serial.println("Encoder 1 Position reset.");
-
-      // Exit the loop after the rotation is done and encoders are reset
-      break;
-    }
-
-    // Print encoder value for debugging
-    Serial.print("Encoder 1 Position: ");
-    Serial.println(enc1Pos);
-
-    // Small delay to prevent overwhelming the serial output
-    delay(100);
-  }
-}
 // ------------------- End of Motor rotation functions -------------------
