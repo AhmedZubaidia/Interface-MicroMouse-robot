@@ -99,13 +99,13 @@ void IRAM_ATTR onTimer() {
   if (elapsedTime % 100 == 0) {
     int index = (elapsedTime / 100) - 1;
     if (index >= 0 && index < 8) {
-      if (encoder1Pos == lastEncoder1Pos) {
+      if ( abs(encoder1Pos - lastEncoder1Pos) <5) {
         leftWheelFlags[index] = true;
       } else {
         leftWheelFlags[index] = false;
       }
 
-      if (encoder2Pos == lastEncoder2Pos) {
+      if ( abs (encoder2Pos - lastEncoder2Pos) <5) {
         rightWheelFlags[index] = true;
       } else {
         rightWheelFlags[index] = false;
@@ -444,7 +444,7 @@ void forward_with_correction(int &motor1Speed, int &motor2Speed) {
             bothWheelsFlags[i] = false;
         }
 
-        delay(200);
+        delay(130);
     }
 
 
@@ -584,7 +584,7 @@ void rotateMotor1ToRight() {
   digitalWrite(MOTOR2_IN3, LOW);
   digitalWrite(MOTOR2_IN4, LOW);
 
-   motor1Speed = 118;
+   motor1Speed = 110;
    motor2Speed = 0 ;
 
   analogWrite(MOTOR2_PWM, motor2Speed);
@@ -609,21 +609,26 @@ void rotateMotor1ToRight() {
             }
         }
 
-  if(leftWheels_flag_count  > 5 && motor1Speed !=0 && motor2Speed == 0) {
-        motorIncrement2 = 30;
+  if(leftWheels_flag_count  > 4 && motor1Speed !=0 && motor2Speed == 0) {
         Serial.println("Inside if (rightWheels_flag_count > 5)");
 
-        for (int i = 0; i < 8; i++) {
+  
+         motor2Speed = 135; // Maintain speed of motor 2
+          analogWrite(MOTOR1_PWM, motor1Speed);
+
+            for (int i = 0; i < 8; i++) {
             rightWheelFlags[i] = false;
         }
+
+
+        delay(200);
     }
 
 
-    if (enc1Pos < 1010) {
+    if (enc1Pos < 1086) {
       // Move motor 1
       digitalWrite(MOTOR1_IN1, HIGH);
       digitalWrite(MOTOR1_IN2, LOW);
-       motor1Speed = motor1Speed + motorIncrement1;
       analogWrite(MOTOR1_PWM, motor1Speed);  // Full speed
     } else {
 
