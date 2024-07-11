@@ -1,17 +1,21 @@
+#include "Arduino.h"
+
+
+
 //this code makes the robot goes in approximate straight line but not fully //yet
 //it still goes to the right or the left sometimes but the ratio is good here
  
 // Define motor control pins
-#define MOTOR1_IN1 22
-#define MOTOR1_IN2 23
+#define MOTOR1_IN1 19
+#define MOTOR1_IN2 18
 #define MOTOR2_IN3 25
 #define MOTOR2_IN4 26
 
 // Define encoder pins
 #define ENCODER1_C1 34
 #define ENCODER1_C2 35
-#define ENCODER2_C1 21
-#define ENCODER2_C2 19
+#define ENCODER2_C1 4
+#define ENCODER2_C2 16
 
 // Define PWM pins for motor speed control
 #define MOTOR1_PWM 5
@@ -70,8 +74,8 @@ void moveForward() {
   // Set motor directions for moving forward
   digitalWrite(MOTOR1_IN1, HIGH);
   digitalWrite(MOTOR1_IN2, LOW);
-  digitalWrite(MOTOR2_IN3, LOW);  // Swap HIGH/LOW
-  digitalWrite(MOTOR2_IN4, HIGH); // Swap HIGH/LOW
+  digitalWrite(MOTOR2_IN3, HIGH);  // Swap HIGH/LOW
+  digitalWrite(MOTOR2_IN4, LOW); // Swap HIGH/LOW
 
   // Set motor speed
   ledcWrite(0, MOTOR_SPEED_RIGHT);
@@ -83,8 +87,8 @@ void moveBackward() {
   Serial.println("Moving backward");
 
   // Set motor directions for moving backward
-  digitalWrite(MOTOR1_IN1, LOW);
-  digitalWrite(MOTOR1_IN2, HIGH);
+  digitalWrite(MOTOR1_IN1, HIGH);
+  digitalWrite(MOTOR1_IN2, LOW );
   digitalWrite(MOTOR2_IN3, HIGH); // Swap HIGH/LOW
   digitalWrite(MOTOR2_IN4, LOW);  // Swap HIGH/LOW
 
