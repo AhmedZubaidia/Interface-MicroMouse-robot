@@ -28,6 +28,8 @@ volatile bool resetFlag = false;           // Flag to indicate reset condition
 volatile unsigned long lastCheckTime = 0;  // Time when the last check occurred
 
 volatile int lastDiff = 0;  // Global variable to store the last difference value
+bool initializationCompleted = false;
+
 
 int motorIncrement2_both =0 ;
 int motorIncrement1_both = 0; 
@@ -299,37 +301,64 @@ void loop() {
 
 // ------------------- Helper Functions -------------------
 void readSensorsAndCheckConditions() {
-  portENTER_CRITICAL(&mux);
-  bool ir1 = ir1Low; // Front sensor
-  bool ir2 = ir2Low; // Right sensor
-  portEXIT_CRITICAL(&mux);
 
-  // Read distance from the sensor
-  int distance = sensor.readRangeContinuousMillimeters();
-  if (sensor.timeoutOccurred()) {
-    return;
-  }
+    
+    portENTER_CRITICAL(&mux);
+    bool ir1 = ir1Low; // Front sensor
+    bool ir2 = ir2Low; // Right sensor
+    portEXIT_CRITICAL(&mux);
 
-  
-  if (ir2) {  // If front sensor (IR1) does not detect an obstacle
-      stopAllMotors();
 
-     if (!ir1 && distance < 80) {  // If right sensor (IR2) does not detect an obstacle, turn right
-      rotateMotor1ToRight(); // Assuming this function turns the robot to the right
-      rest_moveForward();
-    } else if ( ir1 &&  distance > 80) {  // If distance sensor detects a clear path to the left, turn left
-      rotateMotor2ToLeft(); // Assuming this function turns the robot to the left
-      rest_moveForward();
-    }else if (!ir1 &&  distance > 80){
+ if (!initializationCompleted) {
+        // Add a small delay to give the sensors time to initialize
+     ir1 = !ir1Low; // Front sensor
 
-      rotateMotor1ToRight(); // Assuming this function turns the robot to the right
-      rest_moveForward();
+     if (!ir1){
+      initializationCompleted = true;  // Set the flag to true after the delay
+
+     }
+
     }
-  } else {  // If front sensor (IR1) detects an obstacle, turn around
-   // rotateMotor1ToRight();
-    //rotateMotor1ToRight();
-    //rest_moveForward();
-  }
+    
+
+    // Read distance from the sensor
+    int distance = sensor.readRangeContinuousMillimeters();
+    if (sensor.timeoutOccurred()) {
+        Serial.println("Sensor timeout occurred.");
+        return;
+    }
+
+    Serial.print("IR1 (Front): ");
+    Serial.println(ir1);
+    Serial.print("IR2 (Right): ");
+    
+    Serial.println(ir2);
+    Serial.print("Distance: ");
+    Serial.println(distance);
+
+    if (ir2) {  // If right sensor (IR2) detects an obstacle
+        Serial.println("Right sensor detects an obstacle. Stopping all motors.");
+        stopAllMotors();
+
+        if (!ir1 && distance < 50) {  // If front sensor (IR1) does not detect an obstacle and distance is less than 50mm, turn right
+            Serial.println("No front obstacle and distance < 50mm. Turning right.");
+            rotateMotor1ToRight(); // Assuming this function turns the robot to the right
+            rest_moveForward();
+        } else if (ir1 && distance > 50) {  // If front sensor (IR1) detects an obstacle and distance is greater than 50mm, turn left
+            Serial.println("Front obstacle and distance > 50mm. Turning left.");
+            rotateMotor2ToLeft(); // Assuming this function turns the robot to the left
+            rest_moveForward();
+        } else if (!ir1 && distance > 50) {
+            Serial.println("No front obstacle and distance > 50mm. Turning right.");
+            rotateMotor1ToRight(); // Assuming this function turns the robot to the right
+            rest_moveForward();
+        }
+    } else {  // If right sensor (IR2) does not detect an obstacle
+        Serial.println("Right sensor does not detect an obstacle. Turning around.");
+        // rotateMotor1ToRight();
+        // rotateMotor1ToRight();
+        // rest_moveForward();
+    }
 }
 
 
