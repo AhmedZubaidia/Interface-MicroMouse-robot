@@ -28,8 +28,6 @@ volatile bool resetFlag = false;           // Flag to indicate reset condition
 volatile unsigned long lastCheckTime = 0;  // Time when the last check occurred
 
 volatile int lastDiff = 0;  // Global variable to store the last difference value
-bool initializationCompleted = false;
-
 
 int motorIncrement2_both =0 ;
 int motorIncrement1_both = 0; 
@@ -37,6 +35,7 @@ int motorIncrement1_both = 0;
 volatile int encoder1Pos = 0;
 volatile int encoder2Pos = 0;
 portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+bool initializationCompleted = false;
 
 int motor1Speed = 100;
 int motor2Speed = 120;
@@ -352,14 +351,13 @@ void readSensorsAndCheckConditions() {
             Serial.println("No front obstacle and distance > 50mm. Turning right.");
             rotateMotor1ToRight(); // Assuming this function turns the robot to the right
             rest_moveForward();
-        }
-    } else {  // If right sensor (IR2) does not detect an obstacle
-        Serial.println("Right sensor does not detect an obstacle. Turning around.");
-        // rotateMotor1ToRight();
-        // rotateMotor1ToRight();
-        // rest_moveForward();
+        }else {  // If front sensor (IR1) detects an obstacle, turn around
+     turnAround();
+    rest_moveForward();
+  }
     }
 }
+
 
 
 
@@ -446,6 +444,7 @@ void forward_with_correction(int &motor1Speed, int &motor2Speed) {
       motor1Speed = 95; // Maintain speed of motor 1
       motor2Speed = 0; // Slow down motor 2
     }
+    Serial.println("Correcting motor speeds...");
   } else if (abs(diff) < 40) {
     motor1Speed = 95; // Maintain speed of motor 1
     motor2Speed = 100; // Maintain speed of motor 2
@@ -621,6 +620,97 @@ void rotateMotor1ToRight() {
        delay(10);
 
   }
+}
+
+
+void turnAround() {
+    int rightWheels_flag_count = 0;
+    int leftWheels_flag_count = 0;
+
+    // Set speeds for both motors
+    motor1Speed = 104;
+    motor2Speed = 107;
+
+    // Initialize both motors to move in opposite directions
+    digitalWrite(MOTOR1_IN1,  LOW );
+    digitalWrite(MOTOR1_IN2,  HIGH );
+    digitalWrite(MOTOR2_IN3, HIGH);
+    digitalWrite(MOTOR2_IN4, LOW);
+
+    analogWrite(MOTOR1_PWM, motor1Speed);
+    analogWrite(MOTOR2_PWM, motor2Speed);
+
+    // Reset encoder values
+    portENTER_CRITICAL(&mux);
+    encoder1Pos = 0;
+    encoder2Pos = 0;
+    portEXIT_CRITICAL(&mux);
+
+    while (true) {
+        portENTER_CRITICAL(&mux);
+        int enc1Pos = abs(encoder1Pos);
+        int enc2Pos = abs(encoder2Pos);
+        portEXIT_CRITICAL(&mux);
+
+        leftWheels_flag_count = 0;
+        rightWheels_flag_count = 0;
+
+        for (int i = 0; i < 8; i++) {
+            if (leftWheelFlags[i]) {
+                leftWheels_flag_count++;
+            }
+            if (rightWheelFlags[i]) {
+                rightWheels_flag_count++;
+            }
+        }
+
+        if (leftWheels_flag_count > 4 && motor1Speed != 0 && motor2Speed != 0) {
+            motor1Speed = 145;
+            analogWrite(MOTOR1_PWM, motor1Speed);
+
+            for (int i = 0; i < 8; i++) {
+                leftWheelFlags[i] = false;
+            }
+
+            delay(100);
+        }
+
+        if (rightWheels_flag_count > 4 && motor1Speed != 0 && motor2Speed != 0) {
+            motor2Speed = 145;
+            analogWrite(MOTOR2_PWM, motor2Speed);
+
+            for (int i = 0; i < 8; i++) {
+                rightWheelFlags[i] = false;
+            }
+
+            delay(100);
+        }
+
+        if (enc1Pos >= 1120 || enc2Pos >= 1120) {
+            // Stop both motors
+            digitalWrite(MOTOR1_IN1, LOW);
+            digitalWrite(MOTOR1_IN2, LOW);
+            digitalWrite(MOTOR2_IN3, LOW);
+            digitalWrite(MOTOR2_IN4, LOW);
+
+            analogWrite(MOTOR1_PWM, 0);
+            analogWrite(MOTOR2_PWM, 0);
+
+            // Wait for 10 seconds
+            delay(500);
+
+            // Reset encoder positions after the delay
+            portENTER_CRITICAL(&mux);
+            encoder1Pos = 0;
+            encoder2Pos = 0;
+            portEXIT_CRITICAL(&mux);
+
+            // Exit the loop after the rotation is done and encoders are reset
+            break;
+        }
+
+        delay(10);
+    }
 }
 
 
