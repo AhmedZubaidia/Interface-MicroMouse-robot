@@ -307,15 +307,10 @@ void readSensorsAndCheckConditions() {
   // Read distance from the sensor
   int distance = sensor.readRangeContinuousMillimeters();
   if (sensor.timeoutOccurred()) {
-    Serial.println("TIMEOUT");
     return;
   }
 
-  // Debug print for all variables
-  Serial.print("ir1: "); Serial.print(ir1);
-  Serial.print(", ir2: "); Serial.print(ir2);
-  Serial.print(", distance: "); Serial.println(distance);
-
+  
   if (ir2) {  // If front sensor (IR1) does not detect an obstacle
       stopAllMotors();
 
@@ -416,22 +411,19 @@ void forward_with_correction(int &motor1Speed, int &motor2Speed) {
   // Adjust motor speeds based on encoder differences
   if (abs(diff) >= 10) {
     if (diff > 0) {
-      motor1Speed = 10; // Slow down motor 1
-      motor2Speed = 115; // Maintain speed of motor 2
+      motor1Speed = 0; // Slow down motor 1
+      motor2Speed = 100; // Maintain speed of motor 2
     } else {
-      motor1Speed = 85; // Maintain speed of motor 1
+      motor1Speed = 95; // Maintain speed of motor 1
       motor2Speed = 0; // Slow down motor 2
     }
-    Serial.println("Correcting motor speeds...");
   } else if (abs(diff) < 40) {
-    motor1Speed = 75; // Maintain speed of motor 1
-    motor2Speed = 105; // Maintain speed of motor 2
+    motor1Speed = 95; // Maintain speed of motor 1
+    motor2Speed = 100; // Maintain speed of motor 2
   }
     // Apply the adjusted speeds to the motors
     analogWrite(MOTOR1_PWM, motor1Speed);
     analogWrite(MOTOR2_PWM, motor2Speed);
-
-    
 }
 
 
@@ -452,7 +444,7 @@ void rotateMotor2ToLeft() {
     digitalWrite(MOTOR1_IN2, LOW);
 
     motor1Speed = 0;
-    motor2Speed = 110;
+    motor2Speed = 125;
 
     analogWrite(MOTOR1_PWM, motor1Speed);
     digitalWrite(MOTOR2_IN3, HIGH);
@@ -479,7 +471,7 @@ void rotateMotor2ToLeft() {
         if (rightWheels_flag_count > 4 && motor1Speed == 0 && motor2Speed != 0) {
             Serial.println("Inside if (rightWheels_flag_count > 5)");
 
-            motor2Speed = 135; // Maintain speed of motor 2
+            motor2Speed = 145; // Maintain speed of motor 2
             analogWrite(MOTOR2_PWM, motor2Speed);
 
             for (int i = 0; i < 8; i++) {
@@ -489,20 +481,18 @@ void rotateMotor2ToLeft() {
             delay(200);
         }
 
-        if (enc2Pos < 1030) {
+        if (enc2Pos < 1100) {
             // Move motor 2
             digitalWrite(MOTOR2_IN3, HIGH);
             digitalWrite(MOTOR2_IN4, LOW);
             analogWrite(MOTOR2_PWM, motor2Speed);  // Full speed
+
+
         } else {
             // Stop motor 2
             digitalWrite(MOTOR2_IN3, LOW);
             digitalWrite(MOTOR2_IN4, LOW);
             analogWrite(MOTOR2_PWM, 0);
-
-            // Print final encoder value for debugging
-            Serial.print("Encoder 2 Position before reset: ");
-            Serial.println(enc2Pos);
 
             // Wait for 10 seconds
             delay(500);
@@ -512,26 +502,17 @@ void rotateMotor2ToLeft() {
             encoder2Pos = 0;
             portEXIT_CRITICAL(&mux);
 
-            // Print reset message for debugging
-            Serial.println("Encoder 2 Position reset.");
-
             // Exit the loop after the rotation is done and encoders are reset
             break;
         }
+     
+      delay(10);
 
-        // Print encoder value for debugging
-        Serial.print("Encoder 2 Position: ");
-        Serial.println(enc2Pos);
-        motorIncrement2 = 0;
-
-        // Small delay to prevent overwhelming the serial output
-        delay(100);
+          
     }
 }
 
 void rotateMotor1ToRight() {
-
-
 
     int leftWheels_flag_count = 0;
     int motorIncrement1 = 0;
@@ -540,7 +521,7 @@ void rotateMotor1ToRight() {
   digitalWrite(MOTOR2_IN3, LOW);
   digitalWrite(MOTOR2_IN4, LOW);
 
-   motor1Speed = 110;
+   motor1Speed = 125;
    motor2Speed = 0 ;
 
   analogWrite(MOTOR2_PWM, motor2Speed);
@@ -554,6 +535,7 @@ void rotateMotor1ToRight() {
   portEXIT_CRITICAL(&mux);
 
   while (true) {
+
     portENTER_CRITICAL(&mux);
     int enc1Pos = abs(encoder1Pos);
     portEXIT_CRITICAL(&mux);
@@ -569,11 +551,11 @@ void rotateMotor1ToRight() {
         Serial.println("Inside if (rightWheels_flag_count > 5)");
 
   
-         motor2Speed = 135; // Maintain speed of motor 2
+         motor1Speed = 145; // Maintain speed of motor 2
           analogWrite(MOTOR1_PWM, motor1Speed);
 
             for (int i = 0; i < 8; i++) {
-            rightWheelFlags[i] = false;
+            leftWheelFlags[i] = false;
         }
 
 
@@ -581,7 +563,7 @@ void rotateMotor1ToRight() {
     }
 
 
-    if (enc1Pos < 1030) {
+    if (enc1Pos < 1080) {
       // Move motor 1
       digitalWrite(MOTOR1_IN1, HIGH);
       digitalWrite(MOTOR1_IN2, LOW);
@@ -594,10 +576,6 @@ void rotateMotor1ToRight() {
       digitalWrite(MOTOR1_IN2, LOW);
       analogWrite(MOTOR1_PWM, 0);
 
-      // Print final encoder value for debugging
-      Serial.print("Encoder 1 Position before reset: ");
-      Serial.println(enc1Pos);
-
       // Wait for 10 seconds
       delay(500);
 
@@ -606,21 +584,13 @@ void rotateMotor1ToRight() {
       encoder1Pos = 0;
       portEXIT_CRITICAL(&mux);
 
-      // Print reset message for debugging
-      Serial.println("Encoder 1 Position reset.");
+      
 
       // Exit the loop after the rotation is done and encoders are reset
       break;
     }
+       delay(10);
 
-    // Print encoder value for debugging
-    Serial.print("Encoder 1 Position: ");
-    Serial.println(enc1Pos);
-            motorIncrement1 = 0;
-
-
-    // Small delay to prevent overwhelming the serial output
-    delay(100);
   }
 }
 
