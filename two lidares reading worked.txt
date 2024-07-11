@@ -1,0 +1,102 @@
+#include <Wire.h>
+#include "Adafruit_VL53L0X.h"
+
+// Addresses to assign to the sensors
+#define LOX1_ADDRESS 0x30
+#define LOX2_ADDRESS 0x31
+
+// Pins to control the shutdown (XSHUT) of the sensors
+#define SHT_LOX1 17
+#define SHT_LOX2 16
+
+// Sensor objects
+Adafruit_VL53L0X lox1 = Adafruit_VL53L0X();
+Adafruit_VL53L0X lox2 = Adafruit_VL53L0X();
+
+// Measurement data structures
+VL53L0X_RangingMeasurementData_t measure1;
+VL53L0X_RangingMeasurementData_t measure2;
+
+void setID() {
+  // All sensors in reset
+  digitalWrite(SHT_LOX1, LOW);    
+  digitalWrite(SHT_LOX2, LOW);
+  delay(10);
+
+  // Activate LOX1
+  digitalWrite(SHT_LOX1, HIGH);
+  delay(10); // wait for the sensor to start
+
+  // Initialize LOX1
+  Serial.println(F("Initializing LOX1"));
+  if (!lox1.begin(LOX1_ADDRESS, &Wire)) {
+    Serial.println(F("Failed to boot first VL53L0X"));
+    while (1);
+  }
+  delay(10);
+
+  // Activate LOX2
+  digitalWrite(SHT_LOX2, HIGH);
+  delay(10);
+
+  // Initialize LOX2
+  Serial.println(F("Initializing LOX2"));
+  if (!lox2.begin(LOX2_ADDRESS, &Wire)) {
+    Serial.println(F("Failed to boot second VL53L0X"));
+    while (1);
+  }
+}
+
+void readDualSensors() {
+  // Perform ranging tests
+  lox1.rangingTest(&measure1, false); // pass in 'true' to get debug data printout!
+  lox2.rangingTest(&measure2, false); // pass in 'true' to get debug data printout!
+
+  // Print sensor one reading
+  Serial.print(F("1: "));
+  if (measure1.RangeStatus != 4) {  // if not out of range
+    Serial.print(measure1.RangeMilliMeter);
+  } else {
+    Serial.print(F("Out of range"));
+  }
+
+  Serial.print(F(" "));
+
+  // Print sensor two reading
+  Serial.print(F("2: "));
+  if (measure2.RangeStatus != 4) {
+    Serial.print(measure2.RangeMilliMeter);
+  } else {
+    Serial.print(F("Out of range"));
+  }
+
+  Serial.println();
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  // Wait until the serial port opens for native USB devices
+  while (!Serial) { delay(1); }
+
+  // Initialize shutdown pins
+  pinMode(SHT_LOX1, OUTPUT);
+  pinMode(SHT_LOX2, OUTPUT);
+
+  Serial.println(F("Shutdown pins initialized..."));
+
+  // Put both sensors in reset mode
+  digitalWrite(SHT_LOX1, LOW);
+  digitalWrite(SHT_LOX2, LOW);
+
+  Serial.println(F("Both sensors in reset mode..."));
+
+  // Start the sensors
+  setID();
+}
+
+void loop() {
+  // Read from both sensors
+  readDualSensors();
+  delay(100);
+}
