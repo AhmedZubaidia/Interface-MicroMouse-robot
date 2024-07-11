@@ -7,7 +7,7 @@
 
 // Pins to control the shutdown (XSHUT) of the sensors
 #define SHT_LOX1 17
-#define SHT_LOX2 16
+#define SHT_LOX2 14
 
 // Sensor objects
 Adafruit_VL53L0X lox1 = Adafruit_VL53L0X();
