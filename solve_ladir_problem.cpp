@@ -306,32 +306,39 @@ if (ir_front_detect) {
   forward_with_correction(motor1Speed,motor2Speed);
 }
  
-  delay(100);
+ // delay(100);
 }
 
 
 void forward_with_correction(int &motor1Speed, int &motor2Speed) {
-  
     int enc1Pos, enc2Pos;
     int diff;
 
+    // Set motor directions
     digitalWrite(MOTOR2_IN3, HIGH);
     digitalWrite(MOTOR2_IN4, LOW);
     digitalWrite(MOTOR1_IN1, HIGH);
     digitalWrite(MOTOR1_IN2, LOW);
 
-
-    portENTER_CRITICAL(&mux);
-    encoder1Pos = 0;
-    encoder2Pos = 0;
-    portEXIT_CRITICAL(&mux);
-
+    // Read encoder values
     portENTER_CRITICAL(&mux);
     enc1Pos = encoder1Pos;
     enc2Pos = encoder2Pos;
     portEXIT_CRITICAL(&mux);
 
     diff = enc1Pos - enc2Pos;
+
+    // Print all values in a single line
+    Serial.print("Enc1Pos: ");
+    Serial.print(enc1Pos);
+    Serial.print(" | Enc2Pos: ");
+    Serial.print(enc2Pos);
+    Serial.print(" | Diff: ");
+    Serial.print(diff);
+    Serial.print(" | Motor1Speed: ");
+    Serial.print(motor1Speed);
+    Serial.print(" | Motor2Speed: ");
+    Serial.println(motor2Speed);
 
     // int bothWheels_flag_count = 0;
     // int leftWheels_flag_count = 0;
@@ -361,50 +368,26 @@ void forward_with_correction(int &motor1Speed, int &motor2Speed) {
     //     delay(130);
     // }
 
-    // Adjust motor speeds based on encoder differences
-    if (abs(diff) >= 10) {
-        if (diff > 0) {
-            motor1Speed = 0; // Slow down motor 1
-            motor2Speed = 100; // Maintain speed of motor 2
-        } else {
-            motor1Speed = 95; // Maintain speed of motor 1
-            motor2Speed = 0; // Slow down motor 2
-        }
-        Serial.println("Correcting motor speeds...");
-    } else if (abs(diff) < 40) {
-        motor1Speed = 95; // Maintain speed of motor 1
-        motor2Speed = 100; // Maintain speed of motor 2
+  // Adjust motor speeds based on encoder differences
+  if (abs(diff) >= 10) {
+    if (diff > 0) {
+      motor1Speed = 0; // Slow down motor 1
+      motor2Speed = 100; // Maintain speed of motor 2
+    } else {
+      motor1Speed = 95; // Maintain speed of motor 1
+      motor2Speed = 0; // Slow down motor 2
     }
-
+    Serial.println("Correcting motor speeds...");
+  } else if (abs(diff) < 40) {
+    motor1Speed = 95; // Maintain speed of motor 1
+    motor2Speed = 100; // Maintain speed of motor 2
+  }
     // Apply the adjusted speeds to the motors
     ledcWrite(PWM_CHANNEL_1, motor1Speed);
     ledcWrite(PWM_CHANNEL_2, motor2Speed);
 }
 
 
-
-void rest_moveForward() {
-    // Reset encoder values
-    portENTER_CRITICAL(&mux);
-    encoder1Pos = 0;
-    encoder2Pos = 0;
-    portEXIT_CRITICAL(&mux);
-
-    motor1Speed = 100;
-    motor2Speed = 100;
-    int new_motor1Speed;
-    int new_motor2Speed;
-
-    // Apply initial speeds to the motors
-    ledcWrite(PWM_CHANNEL_1, motor1Speed); // Assuming motor 1 is connected to PWM channel 1
-    ledcWrite(PWM_CHANNEL_2, motor2Speed); // Assuming motor 2 is connected to PWM channel 2
-
-    // Set motor direction
-    digitalWrite(MOTOR2_IN3, HIGH);
-    digitalWrite(MOTOR2_IN4, LOW);
-    digitalWrite(MOTOR1_IN1, HIGH);
-    digitalWrite(MOTOR1_IN2, LOW);
-}
 
 
 void rotateMotor1ToRight() {
@@ -671,4 +654,11 @@ void stopMotors() {
   digitalWrite(MOTOR2_IN4, LOW);
   ledcWrite(PWM_CHANNEL_1, 0);
   ledcWrite(PWM_CHANNEL_2, 0);
+
+      // Reset encoder values
+    portENTER_CRITICAL(&mux);
+    encoder1Pos = 0;
+    encoder2Pos = 0;
+    portEXIT_CRITICAL(&mux);
+
 }
