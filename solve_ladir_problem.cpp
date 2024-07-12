@@ -173,9 +173,9 @@ void IRAM_ATTR onTimer() {
     elapsedTime = 0;
     // Reset all flags
     for (int i = 0; i < 8; i++) {
-//leftWheelFlags[i] = false;
-     // rightWheelFlags[i] = false;
-      //bothWheelsFlags[i] = false;
+      leftWheelFlags[i] = false;
+      rightWheelFlags[i] = false;
+      bothWheelsFlags[i] = false;
     }
   }
 }
@@ -303,6 +303,7 @@ void setup() {
   Serial.println(F("Sensors initialized"));
 }
 
+int isInitialized  = false;
 void loop() {
   // Read distances from the sensors
   lox1.rangingTest(&measure1, false);
@@ -323,25 +324,31 @@ void loop() {
   bool ir_front_detect = irFrontISRLow; // Right sensor
   portEXIT_CRITICAL(&mux);
 
+  if(!isInitialized ){
+
+    stopMotors();
+    delay(700);
+    isInitialized  =true; 
+
+  }
+
+
+
 
 if (ir_front_detect) {
 
  // Check if both distances are less than 80 mm
  if (distance1 > 80 && distance2 < 80 ) { 
-        stopMotors();
-        delay(100);
-
+      stopMotors();
       Serial.println("Going right.");
-    rotateMotor1ToRight();
+      rotateMotor1ToRight();
       stopMotors();
 
 
   }
     if (distance2 > 80 && distance1 < 80) { 
     stopMotors();
-        delay(100);
-
-      Serial.println("Going left.");
+    Serial.println("Going left.");
     rotateMotor2ToLeft();
     stopMotors();
 
@@ -349,8 +356,7 @@ if (ir_front_detect) {
   } 
 
  if (distance1 > 80 && distance2 > 80) {
-       stopMotors();
-        delay(100);
+      stopMotors();
 
       Serial.println("Going right.");
     rotateMotor1ToRight();
@@ -360,8 +366,6 @@ if (ir_front_detect) {
   if (distance1 < 80 && distance2 < 80) {
       Serial.println("Turning around.");
        stopMotors();
-        delay(100);
-
       turnAround();
       stopMotors();
 
@@ -441,15 +445,15 @@ void forward_with_correction(int &motor1Speed, int &motor2Speed) {
   if (abs(diff) >= 10) {
     if (diff > 0) {
       motor1Speed = 0; // Slow down motor 1
-      motor2Speed = 80; // Maintain speed of motor 2
+      motor2Speed = 90; // Maintain speed of motor 2
     } else {
-      motor1Speed = 90; // Maintain speed of motor 1
+      motor1Speed = 100; // Maintain speed of motor 1
       motor2Speed = 0; // Slow down motor 2
     }
     Serial.println("Correcting motor speeds...");
   } else if (abs(diff) < 40) {
-    motor1Speed = 85; // Maintain speed of motor 1
-    motor2Speed = 100; // Maintain speed of motor 2
+    motor1Speed = 105; // Maintain speed of motor 1
+    motor2Speed = 125; // Maintain speed of motor 2
   }
     // Apply the adjusted speeds to the motors
     ledcWrite(PWM_CHANNEL_1, motor1Speed);
@@ -462,6 +466,12 @@ void forward_with_correction(int &motor1Speed, int &motor2Speed) {
 void rotateMotor1ToRight() {
     int leftWheels_flag_count = 0;
 
+
+  for (int i = 0; i < 8; i++) {
+      leftWheelFlags[i] = false;
+      rightWheelFlags[i] = false;
+      bothWheelsFlags[i] = false;
+    }
     // Ensure motor 2 is not moving
     digitalWrite(MOTOR2_IN3, LOW);
     digitalWrite(MOTOR2_IN4, LOW);
@@ -548,6 +558,11 @@ void rotateMotor1ToRight() {
 
 void rotateMotor2ToLeft() {
   
+    for (int i = 0; i < 8; i++) {
+      leftWheelFlags[i] = false;
+      rightWheelFlags[i] = false;
+      bothWheelsFlags[i] = false;
+    }
     int rightWheels_flag_count = 0;
 
     // Ensure motor 1 is not moving
@@ -624,6 +639,12 @@ void rotateMotor2ToLeft() {
 }
 
 void turnAround() {
+
+    for (int i = 0; i < 8; i++) {
+      leftWheelFlags[i] = false;
+      rightWheelFlags[i] = false;
+      bothWheelsFlags[i] = false;
+    }
     int rightWheels_flag_count = 0;
     int leftWheels_flag_count = 0;
 
@@ -717,6 +738,12 @@ void turnAround() {
 
 void stopMotors() {
   // Stop both motors
+
+    for (int i = 0; i < 8; i++) {
+      leftWheelFlags[i] = false;
+      rightWheelFlags[i] = false;
+      bothWheelsFlags[i] = false;
+    }
   digitalWrite(MOTOR1_IN1, LOW);
   digitalWrite(MOTOR1_IN2, LOW);
   digitalWrite(MOTOR2_IN3, LOW);
@@ -729,5 +756,7 @@ void stopMotors() {
     encoder1Pos = 0;
     encoder2Pos = 0;
     portEXIT_CRITICAL(&mux);
+
+    delay(300);
 
 }
