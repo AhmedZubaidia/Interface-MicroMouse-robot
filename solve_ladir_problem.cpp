@@ -138,6 +138,48 @@ volatile long lastEncoder2Pos = 0;
 
 
 
+void IRAM_ATTR onTimer() {
+  elapsedTime += 1;  // Increment elapsed time by 1 ms
+
+  // Set flags for every 0.5 seconds (500 ms)
+  if (elapsedTime % 100 == 0) {
+    int index = (elapsedTime / 100) - 1;
+    if (index >= 0 && index < 8) {
+      if ( abs(encoder1Pos - lastEncoder1Pos) <5) {
+        leftWheelFlags[index] = true;
+      } else {
+        leftWheelFlags[index] = false;
+      }
+
+      if ( abs (encoder2Pos - lastEncoder2Pos) <5) {
+        rightWheelFlags[index] = true;
+      } else {
+        rightWheelFlags[index] = false;
+      }
+
+      if ( abs(encoder1Pos - lastEncoder1Pos)<5  && abs(encoder2Pos - lastEncoder2Pos) <5) {
+        bothWheelsFlags[index] = true;
+      } else {
+        bothWheelsFlags[index] = false;
+      }
+
+      lastEncoder1Pos = encoder1Pos;
+      lastEncoder2Pos = encoder2Pos;
+    }
+  }
+
+  // Reset elapsedTime after 4000 ms
+  if (elapsedTime == 6000) {
+    elapsedTime = 0;
+    // Reset all flags
+    for (int i = 0; i < 8; i++) {
+//leftWheelFlags[i] = false;
+     // rightWheelFlags[i] = false;
+      //bothWheelsFlags[i] = false;
+    }
+  }
+}
+
 
 void IRAM_ATTR updateEncoder1C1() {
   int A = digitalRead(ENCODER1_C1);
@@ -194,6 +236,10 @@ void IRAM_ATTR irFrontISR() {
 }
 
 
+void updateElapsedMillis() {
+  globalElapsedMillis++;
+}
+
 
 void setup() {
   Serial.begin(115200);
@@ -245,6 +291,14 @@ void setup() {
     Serial.println(F("Failed to boot second VL53L0X"));
     while (1);
   }
+
+    // Attach other tickers and timers as needed
+  timeTicker.attach(0.001, updateElapsedMillis);  // Increment globalElapsedMillis every 1 ms
+
+  timer = timerBegin(0, 80, true);              // Timer 0, prescaler 80, count up
+  timerAttachInterrupt(timer, &onTimer, true);  // Attach ISR to timer
+  timerAlarmWrite(timer, 1000, true);           // Set alarm to 1 ms (80 MHz / 80 = 1 MHz, so 1000 counts = 1 ms)
+  timerAlarmEnable(timer);                      // Enable the alarm
 
   Serial.println(F("Sensors initialized"));
 }
@@ -340,33 +394,33 @@ void forward_with_correction(int &motor1Speed, int &motor2Speed) {
     Serial.print(" | Motor2Speed: ");
     Serial.println(motor2Speed);
 
-    // int bothWheels_flag_count = 0;
-    // int leftWheels_flag_count = 0;
-    // int rightWheels_flag_count = 0;
+    int bothWheels_flag_count = 0;
+    int leftWheels_flag_count = 0;
+    int rightWheels_flag_count = 0;
 
-    // // Consolidate flag counting into a single loop
-    // for (int i = 0; i < 8; i++) {
-    //     if (bothWheelsFlags[i]) bothWheels_flag_count++;
-    //     if (leftWheelFlags[i]) leftWheels_flag_count++;
-    //     if (rightWheelFlags[i]) rightWheels_flag_count++;
-    // }
+    // Consolidate flag counting into a single loop
+    for (int i = 0; i < 8; i++) {
+        if (bothWheelsFlags[i]) bothWheels_flag_count++;
+        if (leftWheelFlags[i]) leftWheels_flag_count++;
+        if (rightWheelFlags[i]) rightWheels_flag_count++;
+    }
 
-    // // Increment motor speeds if the flag count conditions are met
-    // if (bothWheels_flag_count > 4) {
-    //     motor1Speed = 135; // Maintain speed of motor 1
-    //     motor2Speed = 165; // Maintain speed of motor 2
-    //     Serial.println("Inside if (bothWheels_flag_count > 5)");
+    // Increment motor speeds if the flag count conditions are met
+    if (bothWheels_flag_count > 4) {
+        motor1Speed = 135; // Maintain speed of motor 1
+        motor2Speed = 165; // Maintain speed of motor 2
+        Serial.println("Inside if (bothWheels_flag_count > 5)");
 
-    //     // Apply the adjusted speeds to the motors
-    //     ledcWrite(PWM_CHANNEL_1, motor1Speed);
-    //     ledcWrite(PWM_CHANNEL_2, motor2Speed);
+        // Apply the adjusted speeds to the motors
+        ledcWrite(PWM_CHANNEL_1, motor1Speed);
+        ledcWrite(PWM_CHANNEL_2, motor2Speed);
 
-    //     for (int i = 0; i < 8; i++) {
-    //         bothWheelsFlags[i] = false;
-    //     }
+        for (int i = 0; i < 8; i++) {
+            bothWheelsFlags[i] = false;
+        }
 
-    //     delay(130);
-    // }
+        delay(130);
+    }
 
   // Adjust motor speeds based on encoder differences
   if (abs(diff) >= 10) {
@@ -420,33 +474,33 @@ void rotateMotor1ToRight() {
         int enc1Pos = abs(encoder1Pos);
         portEXIT_CRITICAL(&mux);
 
-        // leftWheels_flag_count = 0;
-        // for (int i = 0; i < 8; i++) {
-        //     if (leftWheelFlags[i]) {
-        //         leftWheels_flag_count++;
-        //     }
-        // }
+        leftWheels_flag_count = 0;
+        for (int i = 0; i < 8; i++) {
+            if (leftWheelFlags[i]) {
+                leftWheels_flag_count++;
+            }
+        }
 
         Serial.print("Encoder Position: ");
         Serial.println(enc1Pos);
         Serial.print("Left Wheels Flag Count: ");
         Serial.println(leftWheels_flag_count);
 
-        // if (leftWheels_flag_count > 4 && motor1Speed != 0 && motor2Speed == 0) {
-        //     Serial.println("Inside if (leftWheels_flag_count > 4)");
+        if (leftWheels_flag_count > 4 && motor1Speed != 0 && motor2Speed == 0) {
+            Serial.println("Inside if (leftWheels_flag_count > 4)");
 
-        //     motor1Speed = 145; // Increase speed of motor 1
-        //     ledcWrite(PWM_CHANNEL_1, motor1Speed);
+            motor1Speed = 145; // Increase speed of motor 1
+            ledcWrite(PWM_CHANNEL_1, motor1Speed);
 
-        //     Serial.print("Adjusted Motor 1 Speed: ");
-        //     Serial.println(motor1Speed);
+            Serial.print("Adjusted Motor 1 Speed: ");
+            Serial.println(motor1Speed);
 
-        //     for (int i = 0; i < 8; i++) {
-        //         leftWheelFlags[i] = false;
-        //     }
+            for (int i = 0; i < 8; i++) {
+                leftWheelFlags[i] = false;
+            }
 
-        //     delay(200);
-        // }
+            delay(200);
+        }
 
         if (enc1Pos < 1080) {
             // Move motor 1
@@ -503,25 +557,25 @@ void rotateMotor2ToLeft() {
         int enc2Pos = abs(encoder2Pos);
         portEXIT_CRITICAL(&mux);
 
-        // rightWheels_flag_count = 0;
-        // for (int i = 0; i < 8; i++) {
-        //     if (rightWheelFlags[i]) {
-        //         rightWheels_flag_count++;
-        //     }
-        // }
+        rightWheels_flag_count = 0;
+        for (int i = 0; i < 8; i++) {
+            if (rightWheelFlags[i]) {
+                rightWheels_flag_count++;
+            }
+        }
 
-        // if (rightWheels_flag_count > 4 && motor1Speed == 0 && motor2Speed != 0) {
-        //     Serial.println("Inside if (rightWheels_flag_count > 5)");
+        if (rightWheels_flag_count > 4 && motor1Speed == 0 && motor2Speed != 0) {
+            Serial.println("Inside if (rightWheels_flag_count > 5)");
 
-        //     motor2Speed = 145; // Maintain speed of motor 2
-        //     ledcWrite(PWM_CHANNEL_2, motor2Speed);
+            motor2Speed = 145; // Maintain speed of motor 2
+            ledcWrite(PWM_CHANNEL_2, motor2Speed);
 
-        //     for (int i = 0; i < 8; i++) {
-        //         rightWheelFlags[i] = false;
-        //     }
+            for (int i = 0; i < 8; i++) {
+                rightWheelFlags[i] = false;
+            }
 
-        //     delay(200);
-        // }
+            delay(200);
+        }
 
         if (enc2Pos < 1100) {
             // Move motor 2
@@ -583,39 +637,39 @@ void turnAround() {
         int enc2Pos = abs(encoder2Pos);
         portEXIT_CRITICAL(&mux);
 
-        // leftWheels_flag_count = 0;
-        // rightWheels_flag_count = 0;
+        leftWheels_flag_count = 0;
+        rightWheels_flag_count = 0;
 
-        // for (int i = 0; i < 8; i++) {
-        //     if (leftWheelFlags[i]) {
-        //         leftWheels_flag_count++;
-        //     }
-        //     if (rightWheelFlags[i]) {
-        //         rightWheels_flag_count++;
-        //     }
-        // }
+        for (int i = 0; i < 8; i++) {
+            if (leftWheelFlags[i]) {
+                leftWheels_flag_count++;
+            }
+            if (rightWheelFlags[i]) {
+                rightWheels_flag_count++;
+            }
+        }
 
-        // if (leftWheels_flag_count > 4 && motor1Speed != 0 && motor2Speed != 0) {
-        //     motor1Speed = 145;
-        //     ledcWrite(PWM_CHANNEL_1, motor1Speed);
+        if (leftWheels_flag_count > 4 && motor1Speed != 0 && motor2Speed != 0) {
+            motor1Speed = 145;
+            ledcWrite(PWM_CHANNEL_1, motor1Speed);
 
-        //     for (int i = 0; i < 8; i++) {
-        //         leftWheelFlags[i] = false;
-        //     }
+            for (int i = 0; i < 8; i++) {
+                leftWheelFlags[i] = false;
+            }
 
-        //     delay(100);
-        // }
+            delay(100);
+        }
 
-        // if (rightWheels_flag_count > 4 && motor1Speed != 0 && motor2Speed != 0) {
-        //     motor2Speed = 145;
-        //     ledcWrite(PWM_CHANNEL_2, motor2Speed);
+        if (rightWheels_flag_count > 4 && motor1Speed != 0 && motor2Speed != 0) {
+            motor2Speed = 145;
+            ledcWrite(PWM_CHANNEL_2, motor2Speed);
 
-        //     for (int i = 0; i < 8; i++) {
-        //         rightWheelFlags[i] = false;
-        //     }
+            for (int i = 0; i < 8; i++) {
+                rightWheelFlags[i] = false;
+            }
 
-        //     delay(100);
-        // }
+            delay(100);
+        }
 
         if (enc2Pos >= 1120) {
             // Stop both motors
