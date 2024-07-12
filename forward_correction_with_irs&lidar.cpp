@@ -5,21 +5,41 @@
 #include <Ticker.h>  // Library for managing timers
 
 
+#include <Wire.h>
+#include "Adafruit_VL53L0X.h"
+
+// Addresses to assign to the sensors
+#define LOX1_ADDRESS 0x30
+#define LOX2_ADDRESS 0x31
+
+// Pins to control the shutdown (XSHUT) of the sensors
+#define SHT_LOX1 17
+#define SHT_LOX2 14
+
+// Sensor objects
+Adafruit_VL53L0X lox1 = Adafruit_VL53L0X();
+Adafruit_VL53L0X lox2 = Adafruit_VL53L0X();
+
+// Measurement data structures
+VL53L0X_RangingMeasurementData_t measure1;
+VL53L0X_RangingMeasurementData_t measure2;
+
+
 // Define PWM pins for motor speed control
 #define MOTOR1_PWM 5
 #define MOTOR2_PWM 32
 
-// Define motor control pins
-#define MOTOR1_IN1 22
-#define MOTOR1_IN2 23
+#define MOTOR1_IN1 19
+#define MOTOR1_IN2 18
 #define MOTOR2_IN3 25
 #define MOTOR2_IN4 26
 
 // Define encoder pins
 #define ENCODER1_C1 34
 #define ENCODER1_C2 35
-#define ENCODER2_C1 21
-#define ENCODER2_C2 19
+#define ENCODER2_C1 4
+#define ENCODER2_C2 16
+
 
 volatile bool conditionMet = false;             // Flag to track if the condition has been met
 volatile unsigned long conditionStartTime = 0;  // Time when the condition started
@@ -59,7 +79,6 @@ int temp2_speed=90;
 #define IR_PIN1 33
 #define IR_PIN2 27
 
-volatile bool ir1Low = false;  // Flag for IR1 being low
 volatile bool ir2Low = false;  // Flag for IR2 being low
 
 unsigned long previousMillis = 0;
@@ -184,13 +203,6 @@ void IRAM_ATTR updateEncoder2C2() {
   portEXIT_CRITICAL_ISR(&mux);
 }
 
-
-void IRAM_ATTR ir1ISR() {
-  portENTER_CRITICAL_ISR(&mux);
-  ir1Low = digitalRead(IR_PIN1) == LOW;
-  portEXIT_CRITICAL_ISR(&mux);
-}
-
 void IRAM_ATTR ir2ISR() {
   portENTER_CRITICAL_ISR(&mux);
   ir2Low = digitalRead(IR_PIN2) == LOW;
@@ -238,12 +250,10 @@ void setup() {
   digitalWrite(MOTOR2_IN3, HIGH);
   digitalWrite(MOTOR2_IN4, LOW);
 
-    // Set IR sensor pins as inputs
-  pinMode(IR_PIN1, INPUT);
+  // Set IR sensor pin as input
   pinMode(IR_PIN2, INPUT);
 
-   // Attach interrupts for IR sensors
-  attachInterrupt(digitalPinToInterrupt(IR_PIN1), ir1ISR, CHANGE);
+  // Attach interrupt for IR sensor
   attachInterrupt(digitalPinToInterrupt(IR_PIN2), ir2ISR, CHANGE);
 
   // Read speeds from EEPROM
@@ -257,15 +267,23 @@ void setup() {
   analogWrite(MOTOR1_PWM, motor1Speed);
   analogWrite(MOTOR2_PWM, motor2Speed);
 
-  // Initialize VL53L0X sensor
-  Wire.begin(4, 16);  // SDA = GPIO 16, SCL = GPIO 4
-  sensor.init();
-  sensor.setTimeout(500);
-  sensor.startContinuous();
+  // Initialize shutdown pins
+  pinMode(SHT_LOX1, OUTPUT);
+  pinMode(SHT_LOX2, OUTPUT);
 
-  // encoderTicker.attach(0.5, checkEncoderDifference);
+  Serial.println(F("Shutdown pins initialized..."));
+
+  // Put both sensors in reset mode
+  digitalWrite(SHT_LOX1, LOW);
+  digitalWrite(SHT_LOX2, LOW);
+
+  Serial.println(F("Both sensors in reset mode..."));
+
+  // Start the sensors
+  setID();
+
+  // Attach other tickers and timers as needed
   timeTicker.attach(0.001, updateElapsedMillis);  // Increment globalElapsedMillis every 1 ms
-
 
   timer = timerBegin(0, 80, true);              // Timer 0, prescaler 80, count up
   timerAttachInterrupt(timer, &onTimer, true);  // Attach ISR to timer
@@ -288,6 +306,7 @@ void loop() {
 
     readSensorsAndCheckConditions();
   forward_with_correction(motor1Speed, motor2Speed);
+  readDualSensors(); 
 
 
 
@@ -299,63 +318,104 @@ void loop() {
 
 
 // ------------------- Helper Functions -------------------
-void readSensorsAndCheckConditions() {
 
-    
-    portENTER_CRITICAL(&mux);
-    bool ir1 = ir1Low; // Front sensor
-    bool ir2 = ir2Low; // Right sensor
-    portEXIT_CRITICAL(&mux);
+void setID() {
+  // All sensors in reset
+  digitalWrite(SHT_LOX1, LOW);    
+  digitalWrite(SHT_LOX2, LOW);
+  delay(10);
 
+  // Activate LOX1
+  digitalWrite(SHT_LOX1, HIGH);
+  delay(10); // wait for the sensor to start
 
- if (!initializationCompleted) {
-        // Add a small delay to give the sensors time to initialize
-     ir1 = !ir1Low; // Front sensor
-
-     if (!ir1){
-      initializationCompleted = true;  // Set the flag to true after the delay
-
-     }
-
-    }
-    
-
-    // Read distance from the sensor
-    int distance = sensor.readRangeContinuousMillimeters();
-    if (sensor.timeoutOccurred()) {
-        Serial.println("Sensor timeout occurred.");
-        return;
-    }
-
-    Serial.print("IR1 (Front): ");
-    Serial.println(ir1);
-    Serial.print("IR2 (Right): ");
-    
-    Serial.println(ir2);
-    Serial.print("Distance: ");
-    Serial.println(distance);
-
-    if (ir2) {  // If right sensor (IR2) detects an obstacle
-        Serial.println("Right sensor detects an obstacle. Stopping all motors.");
-        stopAllMotors();
-
-        if (!ir1 && distance < 50) {  // If front sensor (IR1) does not detect an obstacle and distance is less than 50mm, turn right
-            Serial.println("No front obstacle and distance < 50mm. Turning right.");
-            rotateMotor1ToRight(); // Assuming this function turns the robot to the right
-            rest_moveForward();
-        } else if (ir1 && distance > 50) {  // If front sensor (IR1) detects an obstacle and distance is greater than 50mm, turn left
-            Serial.println("Front obstacle and distance > 50mm. Turning left.");
-            rotateMotor2ToLeft(); // Assuming this function turns the robot to the left
-            rest_moveForward();
-        } else if (!ir1 && distance > 50) {
-            Serial.println("No front obstacle and distance > 50mm. Turning right.");
-            rotateMotor1ToRight(); // Assuming this function turns the robot to the right
-            rest_moveForward();
-        }else {  // If front sensor (IR1) detects an obstacle, turn around
-     turnAround();
-    rest_moveForward();
+  // Initialize LOX1
+  Serial.println(F("Initializing LOX1"));
+  if (!lox1.begin(LOX1_ADDRESS, &Wire)) {
+    Serial.println(F("Failed to boot first VL53L0X"));
+    while (1);
   }
+  delay(10);
+
+  // Activate LOX2
+  digitalWrite(SHT_LOX2, HIGH);
+  delay(10);
+
+  // Initialize LOX2
+  Serial.println(F("Initializing LOX2"));
+  if (!lox2.begin(LOX2_ADDRESS, &Wire)) {
+    Serial.println(F("Failed to boot second VL53L0X"));
+    while (1);
+  }
+}
+
+void readDualSensors() {
+  // Perform ranging tests
+  lox1.rangingTest(&measure1, false); // pass in 'true' to get debug data printout!
+  lox2.rangingTest(&measure2, false); // pass in 'true' to get debug data printout!
+
+  // Print sensor one reading
+  Serial.print(F("1: "));
+  if (measure1.RangeStatus != 4) {  // if not out of range
+    Serial.print(measure1.RangeMilliMeter);
+  } else {
+    Serial.print(F("Out of range"));
+  }
+
+  Serial.print(F(" "));
+
+  // Print sensor two reading
+  Serial.print(F("2: "));
+  if (measure2.RangeStatus != 4) {
+    Serial.print(measure2.RangeMilliMeter);
+  } else {
+    Serial.print(F("Out of range"));
+  }
+
+  Serial.println();
+}
+
+
+
+void readSensorsAndCheckConditions() {
+  portENTER_CRITICAL(&mux);
+  bool ir2 = ir2Low; // Right sensor
+  portEXIT_CRITICAL(&mux);
+
+  // Read distance from the sensors
+  lox1.rangingTest(&measure1, false);
+  lox2.rangingTest(&measure2, false);
+
+  // Check if the readings are out of range and assign a large value if they are
+  int distance1 = (measure1.RangeStatus == 4) ? 1000 : measure1.RangeMilliMeter; // lidar  right 
+  int distance2 = (measure2.RangeStatus == 4) ? 1000 : measure2.RangeMilliMeter; //  lidar left
+
+  Serial.print("IR2 (Right): ");
+  Serial.println(ir2);
+  Serial.print("Distance1: ");
+  Serial.println(distance1);
+  Serial.print("Distance2: ");
+  Serial.println(distance2);
+
+  if (ir2) {  // If the right sensor detects an obstacle in front
+    Serial.println("Right sensor detects an obstacle. Stopping all motors.");
+    stopAllMotors();
+
+    if (distance1 > 80 && distance2 < 80 ) {   // go right if left blocked and right open 
+      rotateMotor1ToRight();
+      rest_moveForward();
+    } else if (distance2 > 80 && distance1 < 80) {  // go left if right blocked and left open
+      rotateMotor2ToLeft();
+      rest_moveForward();
+    } else if (distance1 > 80 && distance2 > 80) {  // If both sensors have free space, go right
+      rotateMotor1ToRight();
+      rest_moveForward();
+    } else if (distance1 < 80 && distance2 < 80) {  // If both sensors are blocked, turn around
+      Serial.println("Turning around.");
+      turnAround();
+      rest_moveForward();
     }
+  }
 }
 
 
@@ -464,8 +524,8 @@ void forward_with_correction(int &motor1Speed, int &motor2Speed) {
 // ------------------- Motor rotation functions -------------------
 
 void rotateMotor2ToLeft() {
+  
     int rightWheels_flag_count = 0;
-    int motorIncrement2 = 0;
 
     // Ensure motor 1 is not moving
     digitalWrite(MOTOR1_IN1, LOW);
@@ -541,85 +601,83 @@ void rotateMotor2ToLeft() {
 }
 
 void rotateMotor1ToRight() {
-
     int leftWheels_flag_count = 0;
     int motorIncrement1 = 0;
 
-  // Ensure motor 2 is not moving
-  digitalWrite(MOTOR2_IN3, LOW);
-  digitalWrite(MOTOR2_IN4, LOW);
+    // Ensure motor 2 is not moving
+    digitalWrite(MOTOR2_IN3, LOW);
+    digitalWrite(MOTOR2_IN4, LOW);
 
-   motor1Speed = 125;
-   motor2Speed = 0 ;
+    motor1Speed = 125;
+    motor2Speed = 0;
 
-  analogWrite(MOTOR2_PWM, motor2Speed);
-  digitalWrite(MOTOR1_IN1, HIGH);
-  digitalWrite(MOTOR1_IN2, LOW);
-  analogWrite(MOTOR1_PWM, motor1Speed);
+    analogWrite(MOTOR2_PWM, motor2Speed);
+    digitalWrite(MOTOR1_IN1, HIGH);
+    digitalWrite(MOTOR1_IN2, LOW);
+    analogWrite(MOTOR1_PWM, motor1Speed);
 
-  // Reset encoder values
-  portENTER_CRITICAL(&mux);
-  encoder1Pos = 0;
-  portEXIT_CRITICAL(&mux);
-
-  while (true) {
-
+    // Reset encoder values
     portENTER_CRITICAL(&mux);
-    int enc1Pos = abs(encoder1Pos);
+    encoder1Pos = 0;
     portEXIT_CRITICAL(&mux);
 
-         leftWheels_flag_count = 0;
+    while (true) {
+        portENTER_CRITICAL(&mux);
+        int enc1Pos = abs(encoder1Pos);
+        portEXIT_CRITICAL(&mux);
+
+        leftWheels_flag_count = 0;
         for (int i = 0; i < 8; i++) {
             if (leftWheelFlags[i]) {
                 leftWheels_flag_count++;
             }
         }
 
-  if(leftWheels_flag_count  > 4 && motor1Speed !=0 && motor2Speed == 0) {
-        Serial.println("Inside if (rightWheels_flag_count > 5)");
+        Serial.print("Encoder Position: ");
+        Serial.println(enc1Pos);
+        Serial.print("Left Wheels Flag Count: ");
+        Serial.println(leftWheels_flag_count);
 
-  
-         motor1Speed = 145; // Maintain speed of motor 2
-          analogWrite(MOTOR1_PWM, motor1Speed);
+        if (leftWheels_flag_count > 4 && motor1Speed != 0 && motor2Speed == 0) {
+            Serial.println("Inside if (leftWheels_flag_count > 4)");
+
+            motor1Speed = 145; // Increase speed of motor 1
+            analogWrite(MOTOR1_PWM, motor1Speed);
 
             for (int i = 0; i < 8; i++) {
-            leftWheelFlags[i] = false;
+                leftWheelFlags[i] = false;
+            }
+
+            delay(200);
         }
 
+        if (enc1Pos < 1080) {
+            // Move motor 1
+            digitalWrite(MOTOR1_IN1, HIGH);
+            digitalWrite(MOTOR1_IN2, LOW);
+            analogWrite(MOTOR1_PWM, motor1Speed);  // Full speed
+            Serial.println("Motor 1 is moving...");
+        } else {
+            // Stop motor 1
+            digitalWrite(MOTOR1_IN1, LOW);
+            digitalWrite(MOTOR1_IN2, LOW);
+            analogWrite(MOTOR1_PWM, 0);
 
-        delay(200);
+            Serial.println("Motor 1 stopped.");
+
+            // Wait for 0.5 seconds
+            delay(500);
+
+            // Reset encoder positions after the delay
+            portENTER_CRITICAL(&mux);
+            encoder1Pos = 0;
+            portEXIT_CRITICAL(&mux);
+
+            // Exit the loop after the rotation is done and encoders are reset
+            break;
+        }
+        delay(10);
     }
-
-
-    if (enc1Pos < 1080) {
-      // Move motor 1
-      digitalWrite(MOTOR1_IN1, HIGH);
-      digitalWrite(MOTOR1_IN2, LOW);
-      analogWrite(MOTOR1_PWM, motor1Speed);  // Full speed
-    } else {
-
-      
-      // Stop motor 1
-      digitalWrite(MOTOR1_IN1, LOW);
-      digitalWrite(MOTOR1_IN2, LOW);
-      analogWrite(MOTOR1_PWM, 0);
-
-      // Wait for 10 seconds
-      delay(500);
-
-      // Reset encoder positions after the delay
-      portENTER_CRITICAL(&mux);
-      encoder1Pos = 0;
-      portEXIT_CRITICAL(&mux);
-
-      
-
-      // Exit the loop after the rotation is done and encoders are reset
-      break;
-    }
-       delay(10);
-
-  }
 }
 
 
@@ -628,8 +686,8 @@ void turnAround() {
     int leftWheels_flag_count = 0;
 
     // Set speeds for both motors
-    motor1Speed = 104;
-    motor2Speed = 107;
+    motor1Speed = 110;
+    motor2Speed = 115;
 
     // Initialize both motors to move in opposite directions
     digitalWrite(MOTOR1_IN1,  LOW );
@@ -686,7 +744,7 @@ void turnAround() {
             delay(100);
         }
 
-        if (enc1Pos >= 1120 || enc2Pos >= 1120) {
+        if (enc2Pos >= 1120) {
             // Stop both motors
             digitalWrite(MOTOR1_IN1, LOW);
             digitalWrite(MOTOR1_IN2, LOW);
