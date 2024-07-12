@@ -311,6 +311,9 @@ void loop() {
   int distance1 = (measure1.RangeStatus == 4) ? 1000 : measure1.RangeMilliMeter;
   int distance2 = (measure2.RangeStatus == 4) ? 1000 : measure2.RangeMilliMeter;
 
+  distance1 = distance1 -30; 
+  distance2 = distance2 -30 ;
+
   Serial.print("Distance1: ");
   Serial.println(distance1);
   Serial.print("Distance2: ");
@@ -325,6 +328,9 @@ if (ir_front_detect) {
 
  // Check if both distances are less than 80 mm
  if (distance1 > 80 && distance2 < 80 ) { 
+        stopMotors();
+        delay(100);
+
       Serial.println("Going right.");
     rotateMotor1ToRight();
       stopMotors();
@@ -332,6 +338,9 @@ if (ir_front_detect) {
 
   }
     if (distance2 > 80 && distance1 < 80) { 
+    stopMotors();
+        delay(100);
+
       Serial.println("Going left.");
     rotateMotor2ToLeft();
     stopMotors();
@@ -340,6 +349,9 @@ if (ir_front_detect) {
   } 
 
  if (distance1 > 80 && distance2 > 80) {
+       stopMotors();
+        delay(100);
+
       Serial.println("Going right.");
     rotateMotor1ToRight();
     stopMotors();
@@ -347,6 +359,9 @@ if (ir_front_detect) {
 
   if (distance1 < 80 && distance2 < 80) {
       Serial.println("Turning around.");
+       stopMotors();
+        delay(100);
+
       turnAround();
       stopMotors();
 
@@ -407,8 +422,8 @@ void forward_with_correction(int &motor1Speed, int &motor2Speed) {
 
     // Increment motor speeds if the flag count conditions are met
     if (bothWheels_flag_count > 4) {
-        motor1Speed = 135; // Maintain speed of motor 1
-        motor2Speed = 165; // Maintain speed of motor 2
+        motor1Speed = 130; // Maintain speed of motor 1
+        motor2Speed = 145; // Maintain speed of motor 2
         Serial.println("Inside if (bothWheels_flag_count > 5)");
 
         // Apply the adjusted speeds to the motors
@@ -426,14 +441,14 @@ void forward_with_correction(int &motor1Speed, int &motor2Speed) {
   if (abs(diff) >= 10) {
     if (diff > 0) {
       motor1Speed = 0; // Slow down motor 1
-      motor2Speed = 100; // Maintain speed of motor 2
+      motor2Speed = 80; // Maintain speed of motor 2
     } else {
-      motor1Speed = 95; // Maintain speed of motor 1
+      motor1Speed = 90; // Maintain speed of motor 1
       motor2Speed = 0; // Slow down motor 2
     }
     Serial.println("Correcting motor speeds...");
   } else if (abs(diff) < 40) {
-    motor1Speed = 95; // Maintain speed of motor 1
+    motor1Speed = 85; // Maintain speed of motor 1
     motor2Speed = 100; // Maintain speed of motor 2
   }
     // Apply the adjusted speeds to the motors
@@ -451,7 +466,7 @@ void rotateMotor1ToRight() {
     digitalWrite(MOTOR2_IN3, LOW);
     digitalWrite(MOTOR2_IN4, LOW);
 
-    motor1Speed = 125;
+    motor1Speed = 100;
     motor2Speed = 0;
 
     ledcWrite(PWM_CHANNEL_2, motor2Speed);
@@ -502,7 +517,7 @@ void rotateMotor1ToRight() {
             delay(200);
         }
 
-        if (enc1Pos < 1080) {
+        if (enc1Pos < 970) {
             // Move motor 1
             digitalWrite(MOTOR1_IN1, HIGH);
             digitalWrite(MOTOR1_IN2, LOW);
