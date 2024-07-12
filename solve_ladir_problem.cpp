@@ -23,7 +23,7 @@
 #define PWM_CHANNEL_2 1
 #define PWM_RESOLUTION 8
 
-
+#define IR_Front_PIN2 27
 
 
 
@@ -107,13 +107,9 @@ volatile unsigned long lastDiffTime = 0;  // Global variable to track the time o
 int temp1_speed=90; //basic speed for correction 
 int temp2_speed=90;
 
-#define IR_PIN1 33
-#define IR_PIN2 27
-
-volatile bool ir2Low = false;  // Flag for IR2 being low
-
 unsigned long previousMillis = 0;
 const long interval = 10;  // interval to read sensors (10 milliseconds)
+volatile bool irFrontISRLow = false;  // Flag for IR2 being low
 
 
 // EEPROM addresses for saving speeds
@@ -191,9 +187,9 @@ void IRAM_ATTR updateEncoder2C2() {
   portEXIT_CRITICAL_ISR(&mux);
 }
 
-void IRAM_ATTR ir2ISR() {
+void IRAM_ATTR irFrontISR() {
   portENTER_CRITICAL_ISR(&mux);
-  ir2Low = digitalRead(IR_PIN2) == LOW;
+ irFrontISRLow = digitalRead(IR_Front_PIN2) == LOW;
   portEXIT_CRITICAL_ISR(&mux);
 }
 
@@ -208,6 +204,8 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(ENCODER1_C2), updateEncoder1C2, CHANGE);
   attachInterrupt(digitalPinToInterrupt(ENCODER2_C1), updateEncoder2C1, CHANGE);
   attachInterrupt(digitalPinToInterrupt(ENCODER2_C2), updateEncoder2C2, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(IR_Front_PIN2), irFrontISR, CHANGE);
+
 
   // Initialize motor control pins
   pinMode(MOTOR1_IN1, OUTPUT);
@@ -264,14 +262,23 @@ void loop() {
   Serial.print("Distance2: ");
   Serial.println(distance2);
 
-  // Check if both distances are less than 80 mm
-  if (distance1 < 80 && distance2 < 80) {
+  portENTER_CRITICAL(&mux);
+  bool ir_front_detect = irFrontISRLow; // Right sensor
+  portEXIT_CRITICAL(&mux);
+
+
+if (ir_front_detect) {
+
+ // Check if both distances are less than 80 mm
+ if (distance1 > 80 && distance2 < 80 ) { 
     Serial.println("Both distances < 80 mm. Rotating right.");
     rotateMotor1ToRight();
   } else {
     stopMotors();
   }
 
+}
+ 
   delay(100);
 }
 
