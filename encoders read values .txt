@@ -3,8 +3,8 @@
 // Define encoder pins
 #define ENCODER1_C1 34
 #define ENCODER1_C2 35
-#define ENCODER2_C1 21
-#define ENCODER2_C2 19
+#define ENCODER2_C1 4
+#define ENCODER2_C2 16
 
 volatile int encoder1Pos = 0;
 volatile int encoder2Pos = 0;
@@ -82,8 +82,9 @@ void loop() {
   portEXIT_CRITICAL(&mux);
 
   Serial.print("Encoder 1 Position: ");
-  Serial.println(enc1Pos);
-  //Serial.print("Encoder 2 Position: ");
-  //Serial.println(enc2Pos);
+  Serial.print(enc1Pos);
+  Serial.print(" Encoder 2 Position: ");
+  Serial.println(enc2Pos);
+   Serial.println();
 
 }
