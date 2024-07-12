@@ -273,37 +273,137 @@ if (ir_front_detect) {
  if (distance1 > 80 && distance2 < 80 ) { 
       Serial.println("Going right.");
     rotateMotor1ToRight();
-  } else {
-    stopMotors();
-  }
+      stopMotors();
 
+
+  }
     if (distance2 > 80 && distance1 < 80) { 
       Serial.println("Going left.");
     rotateMotor2ToLeft();
-  } else {
     stopMotors();
-  }
+
+
+  } 
 
  if (distance1 > 80 && distance2 > 80) {
       Serial.println("Going right.");
     rotateMotor1ToRight();
-  } else {
     stopMotors();
   }
 
   if (distance1 < 80 && distance2 < 80) {
       Serial.println("Turning around.");
       turnAround();
-  } else {
-    stopMotors();
-  }
+      stopMotors();
+
+
+  } 
 
 
 
+}else{
 
+  forward_with_correction(motor1Speed,motor2Speed);
 }
  
   delay(100);
+}
+
+
+void forward_with_correction(int &motor1Speed, int &motor2Speed) {
+  
+    int enc1Pos, enc2Pos;
+    int diff;
+
+    digitalWrite(MOTOR2_IN3, HIGH);
+    digitalWrite(MOTOR2_IN4, LOW);
+    digitalWrite(MOTOR1_IN1, HIGH);
+    digitalWrite(MOTOR1_IN2, LOW);
+
+
+    portENTER_CRITICAL(&mux);
+    encoder1Pos = 0;
+    encoder2Pos = 0;
+    portEXIT_CRITICAL(&mux);
+
+    portENTER_CRITICAL(&mux);
+    enc1Pos = encoder1Pos;
+    enc2Pos = encoder2Pos;
+    portEXIT_CRITICAL(&mux);
+
+    diff = enc1Pos - enc2Pos;
+
+    // int bothWheels_flag_count = 0;
+    // int leftWheels_flag_count = 0;
+    // int rightWheels_flag_count = 0;
+
+    // // Consolidate flag counting into a single loop
+    // for (int i = 0; i < 8; i++) {
+    //     if (bothWheelsFlags[i]) bothWheels_flag_count++;
+    //     if (leftWheelFlags[i]) leftWheels_flag_count++;
+    //     if (rightWheelFlags[i]) rightWheels_flag_count++;
+    // }
+
+    // // Increment motor speeds if the flag count conditions are met
+    // if (bothWheels_flag_count > 4) {
+    //     motor1Speed = 135; // Maintain speed of motor 1
+    //     motor2Speed = 165; // Maintain speed of motor 2
+    //     Serial.println("Inside if (bothWheels_flag_count > 5)");
+
+    //     // Apply the adjusted speeds to the motors
+    //     ledcWrite(PWM_CHANNEL_1, motor1Speed);
+    //     ledcWrite(PWM_CHANNEL_2, motor2Speed);
+
+    //     for (int i = 0; i < 8; i++) {
+    //         bothWheelsFlags[i] = false;
+    //     }
+
+    //     delay(130);
+    // }
+
+    // Adjust motor speeds based on encoder differences
+    if (abs(diff) >= 10) {
+        if (diff > 0) {
+            motor1Speed = 0; // Slow down motor 1
+            motor2Speed = 100; // Maintain speed of motor 2
+        } else {
+            motor1Speed = 95; // Maintain speed of motor 1
+            motor2Speed = 0; // Slow down motor 2
+        }
+        Serial.println("Correcting motor speeds...");
+    } else if (abs(diff) < 40) {
+        motor1Speed = 95; // Maintain speed of motor 1
+        motor2Speed = 100; // Maintain speed of motor 2
+    }
+
+    // Apply the adjusted speeds to the motors
+    ledcWrite(PWM_CHANNEL_1, motor1Speed);
+    ledcWrite(PWM_CHANNEL_2, motor2Speed);
+}
+
+
+
+void rest_moveForward() {
+    // Reset encoder values
+    portENTER_CRITICAL(&mux);
+    encoder1Pos = 0;
+    encoder2Pos = 0;
+    portEXIT_CRITICAL(&mux);
+
+    motor1Speed = 100;
+    motor2Speed = 100;
+    int new_motor1Speed;
+    int new_motor2Speed;
+
+    // Apply initial speeds to the motors
+    ledcWrite(PWM_CHANNEL_1, motor1Speed); // Assuming motor 1 is connected to PWM channel 1
+    ledcWrite(PWM_CHANNEL_2, motor2Speed); // Assuming motor 2 is connected to PWM channel 2
+
+    // Set motor direction
+    digitalWrite(MOTOR2_IN3, HIGH);
+    digitalWrite(MOTOR2_IN4, LOW);
+    digitalWrite(MOTOR1_IN1, HIGH);
+    digitalWrite(MOTOR1_IN2, LOW);
 }
 
 
