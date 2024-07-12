@@ -29,8 +29,8 @@ VL53L0X_RangingMeasurementData_t measure2;
 #define MOTOR1_PWM 5
 #define MOTOR2_PWM 32
 
-#define MOTOR1_IN1 19
-#define MOTOR1_IN2 18
+#define MOTOR1_IN1 18
+#define MOTOR1_IN2 23
 #define MOTOR2_IN3 25
 #define MOTOR2_IN4 26
 
@@ -305,7 +305,7 @@ void incrementElapsedMillis() {
 void loop() {
 
     readSensorsAndCheckConditions();
-  forward_with_correction(motor1Speed, motor2Speed);
+ // forward_with_correction(motor1Speed, motor2Speed);
   readDualSensors(); 
 
 
@@ -402,12 +402,15 @@ void readSensorsAndCheckConditions() {
     stopAllMotors();
 
     if (distance1 > 80 && distance2 < 80 ) {   // go right if left blocked and right open 
+      Serial.println("Going right.");
       rotateMotor1ToRight();
       rest_moveForward();
     } else if (distance2 > 80 && distance1 < 80) {  // go left if right blocked and left open
+      Serial.println("Going left.");
       rotateMotor2ToLeft();
       rest_moveForward();
     } else if (distance1 > 80 && distance2 > 80) {  // If both sensors have free space, go right
+      Serial.println("Going right according to priority.");
       rotateMotor1ToRight();
       rest_moveForward();
     } else if (distance1 < 80 && distance2 < 80) {  // If both sensors are blocked, turn around
@@ -602,7 +605,6 @@ void rotateMotor2ToLeft() {
 
 void rotateMotor1ToRight() {
     int leftWheels_flag_count = 0;
-    int motorIncrement1 = 0;
 
     // Ensure motor 2 is not moving
     digitalWrite(MOTOR2_IN3, LOW);
@@ -620,6 +622,11 @@ void rotateMotor1ToRight() {
     portENTER_CRITICAL(&mux);
     encoder1Pos = 0;
     portEXIT_CRITICAL(&mux);
+
+    Serial.print("Initial Motor 1 Speed: ");
+    Serial.println(motor1Speed);
+    Serial.print("Initial Motor 2 Speed: ");
+    Serial.println(motor2Speed);
 
     while (true) {
         portENTER_CRITICAL(&mux);
@@ -643,6 +650,9 @@ void rotateMotor1ToRight() {
 
             motor1Speed = 145; // Increase speed of motor 1
             analogWrite(MOTOR1_PWM, motor1Speed);
+
+            Serial.print("Adjusted Motor 1 Speed: ");
+            Serial.println(motor1Speed);
 
             for (int i = 0; i < 8; i++) {
                 leftWheelFlags[i] = false;
