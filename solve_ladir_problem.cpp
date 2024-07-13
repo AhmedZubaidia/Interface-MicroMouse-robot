@@ -66,10 +66,11 @@ VL53L0X_RangingMeasurementData_t measure2;
 #define MOTOR2_IN4 26
 
 // Define encoder pins
-#define ENCODER1_C1    35
-#define ENCODER1_C2  34
-#define ENCODER2_C1  16
-#define ENCODER2_C2  4
+#define ENCODER1_C1  35
+#define ENCODER1_C2 34
+#define ENCODER2_C1 4
+#define ENCODER2_C2 16
+
 
 volatile bool conditionMet = false;             // Flag to track if the condition has been met
 volatile unsigned long conditionStartTime = 0;  // Time when the condition started
@@ -311,17 +312,13 @@ void loop() {
   int distance1 = (measure1.RangeStatus == 4) ? 1000 : measure1.RangeMilliMeter;
   int distance2 = (measure2.RangeStatus == 4) ? 1000 : measure2.RangeMilliMeter;
 
-    int enc1Pos, enc2Pos;
-
   distance1 = distance1 -30; 
   distance2 = distance2 -30 ;
 
-  // Read encoder values
-    portENTER_CRITICAL(&mux);
-    enc1Pos = encoder1Pos;
-    enc2Pos = encoder2Pos;
-    portEXIT_CRITICAL(&mux);
-
+  Serial.print("Distance1: ");
+  Serial.println(distance1);
+  Serial.print("Distance2: ");
+  Serial.println(distance2);
 
   portENTER_CRITICAL(&mux);
   bool ir_front_detect = irFrontISRLow; // Right sensor
@@ -335,8 +332,15 @@ void loop() {
 
   }
 
+    int enc1Pos, enc2Pos;
 
+ // Read encoder values
+   
+  
+
+  
 if (ir_front_detect) {
+  
 
  // Check if both distances are less than 80 mm
  if (distance1 > 80 && distance2 < 80 ) { 
@@ -371,17 +375,24 @@ if (ir_front_detect) {
       stopMotors();
 
 
-  }
+  } 
 
-} else if (distance1 > 80 && distance2 < 80 ) { 
 
-  // Reset encoder values
+
+}else if (distance1 > 80 ) { 
+
+   // Reset encoder values
     portENTER_CRITICAL(&mux);
     encoder1Pos = 0;
-    encoder2Pos = 0;
+    encoder2Pos = 0 ; 
     portEXIT_CRITICAL(&mux);
 
-  while(!(enc1Pos > 1150 && enc2Pos >1150) ){
+    
+
+    while(! (enc1Pos > 1300 && enc2Pos > 1300 )){
+
+      motor1Speed = 70; 
+      motor2Speed = 70;
 
     portENTER_CRITICAL(&mux);
     enc1Pos = encoder1Pos;
@@ -389,24 +400,19 @@ if (ir_front_detect) {
     portEXIT_CRITICAL(&mux);
 
 
-    motor1Speed = 70;
-    motor2Speed = 70 ;
-    forward_with_correction(motor1Speed,motor2Speed);
+      forward_with_correction(motor1Speed,motor2Speed);
 
-    delay(200);
-    
-
-
-  }
+    }
       stopMotors();
       Serial.println("Going right.");
       rotateMotor1ToRight();
-     stopMotors();
+      stopMotors();
 
 
-  } else{
+  }else{
 
   forward_with_correction(motor1Speed,motor2Speed);
+  delay(50);
 }
  
  // delay(100);
@@ -482,8 +488,8 @@ void forward_with_correction(int &motor1Speed, int &motor2Speed) {
     }
     Serial.println("Correcting motor speeds...");
   } else if (abs(diff) < 40) {
-    motor1Speed = 100; // Maintain speed of motor 1
-    motor2Speed = 90; // Maintain speed of motor 2
+    motor1Speed = 105; // Maintain speed of motor 1
+    motor2Speed = 125; // Maintain speed of motor 2
   }
     // Apply the adjusted speeds to the motors
     ledcWrite(PWM_CHANNEL_1, motor1Speed);
@@ -495,8 +501,6 @@ void forward_with_correction(int &motor1Speed, int &motor2Speed) {
 
 void rotateMotor1ToRight() {
     int leftWheels_flag_count = 0;
-
-
 
 
   for (int i = 0; i < 8; i++) {
@@ -527,18 +531,6 @@ void rotateMotor1ToRight() {
     Serial.println(motor2Speed);
 
     while (true) {
-
-    // Read distances from the sensors
-  lox1.rangingTest(&measure1, false);
-  lox2.rangingTest(&measure2, false);
-
-  int distance1 = (measure1.RangeStatus == 4) ? 1000 : measure1.RangeMilliMeter;
-  int distance2 = (measure2.RangeStatus == 4) ? 1000 : measure2.RangeMilliMeter;
-
-  distance1 = distance1 -30; 
-  distance2 = distance2 -30 ;
-
-
         portENTER_CRITICAL(&mux);
         int enc1Pos = abs(encoder1Pos);
         portEXIT_CRITICAL(&mux);
@@ -571,7 +563,7 @@ void rotateMotor1ToRight() {
             delay(200);
         }
 
-        if ( (distance1 > 30 &&enc1Pos < 970 )  ) {
+        if (enc1Pos < 970) {
             // Move motor 1
             digitalWrite(MOTOR1_IN1, HIGH);
             digitalWrite(MOTOR1_IN2, LOW);
@@ -601,17 +593,6 @@ void rotateMotor1ToRight() {
 }
 
 void rotateMotor2ToLeft() {
-
-    // Read distances from the sensors
-  lox1.rangingTest(&measure1, false);
-  lox2.rangingTest(&measure2, false);
-
-  int distance1 = (measure1.RangeStatus == 4) ? 1000 : measure1.RangeMilliMeter;
-  int distance2 = (measure2.RangeStatus == 4) ? 1000 : measure2.RangeMilliMeter;
-
-  distance1 = distance1 -30; 
-  distance2 = distance2 -30 ;
-
   
     for (int i = 0; i < 8; i++) {
       leftWheelFlags[i] = false;
@@ -625,7 +606,7 @@ void rotateMotor2ToLeft() {
     digitalWrite(MOTOR1_IN2, LOW);
 
     motor1Speed = 0;
-    motor2Speed = 100;
+    motor2Speed = 125;
 
     ledcWrite(PWM_CHANNEL_1, motor1Speed); // Assuming motor 1 is connected to PWM channel 1
     digitalWrite(MOTOR2_IN3, HIGH);
@@ -662,7 +643,7 @@ void rotateMotor2ToLeft() {
             delay(200);
         }
 
-        if (distance2 > 30 && enc2Pos < 1059) {
+        if (enc2Pos < 1100) {
             // Move motor 2
             digitalWrite(MOTOR2_IN3, HIGH);
             digitalWrite(MOTOR2_IN4, LOW);
