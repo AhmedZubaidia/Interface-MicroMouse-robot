@@ -1,0 +1,57 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <title>ESP32 Motor Speed Control</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    .bold-text {
+      font-weight: bold;
+    }
+    .section-heading {
+      font-size: 1.5em;
+      margin-bottom: 0.5em;
+      color: #3366CC; /* Blue color */
+    }
+    .preparation-info {
+      color: #009933; /* Green color */
+    }
+    .esp-heading {
+      color: #CC0000; /* Red color */
+    }
+  </style>
+  <script>
+    function sendMotor1Speed() {
+      var speed = document.getElementById('motor1SpeedInput').value;
+      var duration = document.getElementById('motor1Duration').value;
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', '/setMotor1Speed?value=' + speed + '&duration=' + duration, true);
+      xhr.send();
+    }
+    function sendMotor2Speed() {
+      var speed = document.getElementById('motor2SpeedInput').value;
+      var duration = document.getElementById('motor2Duration').value;
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', '/setMotor2Speed?value=' + speed + '&duration=' + duration, true);
+      xhr.send();
+    }
+  </script>
+</head>
+<body>
+  <img src="birzeit.png" style="width: 50%; max-width: 300px;">
+  <h1 class="bold-text esp-heading">ESP32 Motor Speed Control</h1>
+  <h2 class="section-heading">Robot Project Micromouse Maze</h2>
+  <h2 class="section-heading">Supervised by Dr. Wasel Ghanem</h2>
+  <img src="wasel.png" alt="ESP32 Motor Image" style="width: 50%; max-width: 200px;">
+  <form onsubmit="sendMotor1Speed(); return false;">
+    <p><span class="bold-text esp-heading">Motor 1 Speed:</span> <input type="text" id="motor1SpeedInput" value="%MOTOR1SPEED%"></p>
+    <p><span class="bold-text esp-heading">Duration (seconds):</span> <input type="text" id="motor1Duration" value="0"></p>
+    <p><input type="submit" value="Set Motor 1 Speed"></p>
+  </form>
+  <form onsubmit="sendMotor2Speed(); return false;">
+    <p><span class="bold-text esp-heading">Motor 2 Speed:</span> <input type="text" id="motor2SpeedInput" value="%MOTOR2SPEED%"></p>
+    <p><span class="bold-text esp-heading">Duration (seconds):</span> <input type="text" id="motor2Duration" value="0"></p>
+    <p><input type="submit" value="Set Motor 2 Speed"></p>
+  </form>
+  <h2 class="section-heading">Prepared by: Ahmed Zubaidia 1200105 Jana Herzallah 1201139 Lana Badwan 120071</h2>
+</body>
+</html>
