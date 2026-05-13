@@ -1,0 +1,16 @@
+# Arduino / ESP32 build artefacts
+build/
+*.hex
+*.bin
+*.elf
+*.eep
+
+# IDE / editor metadata
+.idea/
+.vscode/
+.pio/
+.pioenvs/
+
+# OS metadata
+.DS_Store
+Thumbs.db
